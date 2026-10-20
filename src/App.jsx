@@ -1,0 +1,403 @@
+import { useEffect, useRef, useState } from 'react'
+import { ControlPanel } from './components/ControlPanel'
+import { GarageCanvas } from './components/GarageCanvas'
+import { clampDimension } from './config'
+import { DOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, findMaterial } from './materials'
+import { useHistory } from './history'
+import { FURNITURE_TYPES, WINDOW_TYPES, clampCar, clampFurniture, clampWindow } from './layout'
+import {
+  createProjectId,
+  isSceneDirty,
+  loadLibrary,
+  persistLibrary,
+  projectNameOrDefault,
+  upsertProject,
+} from './projects'
+import { highestSerial, initialScene, normalizeScene, scenesEqual } from './scene'
+
+let nextId = 1
+
+function createId(prefix) {
+  nextId += 1
+  return `${prefix}-${nextId}`
+}
+
+function adoptIds(scene) {
+  nextId = Math.max(nextId, highestSerial(scene))
+}
+
+export default function App() {
+  const [boot, setBoot] = useState(null)
+  const [bootError, setBootError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    loadLibrary()
+      .then(({ library, directory }) => {
+        if (cancelled) return
+        const active = library.projects.find((project) => project.id === library.activeId) ?? null
+        const scene = active ? active.scene : initialScene
+        adoptIds(scene)
+        setBoot({ library, scene, name: active?.name ?? '', directory })
+      })
+      .catch(() => {
+        if (!cancelled) setBootError('Projekti se ne mogu učitati sa diska.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (bootError) {
+    return <StatusScreen message={bootError} />
+  }
+  if (!boot) {
+    return <StatusScreen message="Učitavam garaže…" />
+  }
+  return <Configurator boot={boot} />
+}
+
+function StatusScreen({ message }) {
+  return (
+    <div className="flex h-dvh items-center justify-center bg-[#ebe6de] px-6 text-center text-stone-600">
+      {message}
+    </div>
+  )
+}
+
+function Configurator({ boot }) {
+  const { scene, canUndo, canRedo, commit, transient, endGesture, undo, redo, replace } = useHistory(boot.scene)
+  const [selected, setSelected] = useState(null)
+  const [library, setLibrary] = useState(boot.library)
+  const [projectName, setProjectName] = useState(boot.name)
+  const [saveError, setSaveError] = useState('')
+  const [saveNotice, setSaveNotice] = useState(null)
+  const saveSerial = useRef(0)
+  const libraryRef = useRef(library)
+  const sceneRef = useRef(scene)
+  const nameRef = useRef(projectName)
+  libraryRef.current = library
+  sceneRef.current = scene
+  nameRef.current = projectName
+  const wallMaterial = findMaterial(WALL_MATERIALS, scene.wallMaterialId)
+  const roofMaterial = findMaterial(ROOF_MATERIALS, scene.roofMaterialId)
+  const doorMaterial = findMaterial(DOOR_MATERIALS, scene.doorMaterialId)
+  const activeProject = library.projects.find((project) => project.id === library.activeId) ?? null
+  const dirty = isSceneDirty(activeProject, projectName, scene)
+  const saveMessage =
+    saveNotice && scenesEqual(saveNotice.scene, scene) && saveNotice.name === projectName
+      ? saveNotice.message
+      : ''
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (!(event.ctrlKey || event.metaKey)) return
+      const key = event.key.toLowerCase()
+      if (key === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) redo()
+        else undo()
+      } else if (key === 'y') {
+        event.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
+
+  useEffect(() => {
+    if (!library.activeId) return undefined
+    const id = library.activeId
+    const handle = setTimeout(() => {
+      const current = libraryRef.current
+      if (current.activeId !== id) return
+      const existing = current.projects.find((project) => project.id === id)
+      if (!existing) return
+      const typed = nameRef.current.trim()
+      const name = typed || existing.name
+      const nextScene = sceneRef.current
+      if (existing.name === name && JSON.stringify(existing.scene) === JSON.stringify(nextScene)) return
+      storeLibrary({
+        ...current,
+        projects: upsertProject(current.projects, {
+          ...existing,
+          name,
+          updatedAt: Date.now(),
+          scene: nextScene,
+        }),
+      })
+    }, 700)
+    return () => clearTimeout(handle)
+  }, [scene, projectName, library.activeId])
+
+  function storeLibrary(next) {
+    const serial = ++saveSerial.current
+    libraryRef.current = next
+    setLibrary(next)
+    return persistLibrary(next)
+      .then(() => {
+        if (serial !== saveSerial.current) return false
+        setSaveError('')
+        return true
+      })
+      .catch(() => {
+        if (serial === saveSerial.current) setSaveError('Nije moguće sačuvati garažu na disk.')
+        return false
+      })
+  }
+
+  function snapshotProject() {
+    const current = libraryRef.current
+    const id = current.activeId ?? createProjectId()
+    const existing = current.projects.find((project) => project.id === id)
+    const name = projectNameOrDefault(nameRef.current || existing?.name)
+    const record = {
+      id,
+      name,
+      updatedAt: Date.now(),
+      scene: normalizeScene(sceneRef.current),
+    }
+    return {
+      library: { activeId: id, projects: upsertProject(current.projects, record) },
+      record,
+    }
+  }
+
+  function saveProject() {
+    const updating = Boolean(libraryRef.current.activeId)
+    const snap = snapshotProject()
+    setProjectName(snap.record.name)
+    storeLibrary(snap.library).then((saved) => {
+      if (!saved) return
+      setSaveNotice({
+        message: updating ? 'Izmene su sačuvane.' : 'Garaža je sačuvana.',
+        scene: snap.record.scene,
+        name: snap.record.name,
+      })
+    })
+    return snap
+  }
+
+  function openProject(id) {
+    const project = libraryRef.current.projects.find((entry) => entry.id === id)
+    if (!project) return
+    const nextScene = normalizeScene(project.scene)
+    adoptIds(nextScene)
+    replace(nextScene)
+    setSelected(null)
+    setSaveNotice(null)
+    setProjectName(project.name)
+    storeLibrary({ ...libraryRef.current, activeId: id })
+  }
+
+  function startNewProject() {
+    adoptIds(initialScene)
+    replace(initialScene)
+    setSelected(null)
+    setSaveNotice(null)
+    setProjectName('')
+    storeLibrary({ ...libraryRef.current, activeId: null })
+  }
+
+  function deleteProject(id) {
+    const current = libraryRef.current
+    const projects = current.projects.filter((project) => project.id !== id)
+    const activeId = current.activeId === id ? null : current.activeId
+    storeLibrary({ activeId, projects })
+  }
+
+  function updateDimension(key, value) {
+    transient((current) => {
+      const dimensions = { ...current.dimensions, [key]: clampDimension(key, value) }
+      return {
+        ...current,
+        dimensions,
+        windows: current.windows.map((item) => clampWindow(item, dimensions)),
+        furniture: current.furniture.map((item) => clampFurniture(item, dimensions)),
+        car: current.car ? clampCar(current.car, dimensions) : null,
+      }
+    })
+  }
+
+  function addWindow(typeId) {
+    const spec = WINDOW_TYPES.find((entry) => entry.id === typeId) ?? WINDOW_TYPES[0]
+    const id = createId('window')
+    commit((current) => {
+      const onBack = current.windows.filter((item) => item.wall === 'back').length
+      const item = clampWindow(
+        {
+          id,
+          type: spec.id,
+          wall: 'back',
+          along: onBack === 0 ? 0 : (onBack % 2 === 0 ? 1 : -1) * Math.ceil(onBack / 2) * 1.15,
+          sill: 0.95,
+          width: spec.width,
+          height: spec.height,
+        },
+        current.dimensions,
+      )
+      return { ...current, windows: [...current.windows, item] }
+    })
+    setSelected({ kind: 'window', id })
+  }
+
+  function addFurniture(typeId) {
+    const spec = FURNITURE_TYPES.find((entry) => entry.id === typeId) ?? FURNITURE_TYPES[0]
+    const id = createId('furniture')
+    commit((current) => {
+      const item = clampFurniture(
+        {
+          id,
+          type: spec.id,
+          x: ((current.furniture.length % 3) - 1) * 1.15,
+          z: Math.floor(current.furniture.length / 3) * 1.2 - 0.4,
+          rotation: 0,
+          width: spec.width,
+          depth: spec.depth,
+          height: spec.height,
+        },
+        current.dimensions,
+      )
+      return { ...current, furniture: [...current.furniture, item] }
+    })
+    setSelected({ kind: 'furniture', id })
+  }
+
+  function updateWindow(id, patch) {
+    transient((current) => ({
+      ...current,
+      windows: current.windows.map((item) =>
+        item.id === id ? clampWindow({ ...item, ...patch }, current.dimensions) : item,
+      ),
+    }))
+  }
+
+  function updateFurniture(id, patch) {
+    transient((current) => ({
+      ...current,
+      furniture: current.furniture.map((item) =>
+        item.id === id ? clampFurniture({ ...item, ...patch }, current.dimensions) : item,
+      ),
+    }))
+  }
+
+  function updateDoor(patch) {
+    const apply = (current) => ({ ...current, door: { ...current.door, ...patch } })
+    if (Object.prototype.hasOwnProperty.call(patch, 'open')) transient(apply)
+    else commit(apply)
+  }
+
+  function addCar() {
+    commit((current) => ({
+      ...current,
+      car: clampCar(
+        {
+          length: 4.4,
+          width: 1.8,
+          height: 1.5,
+          x: 0,
+          z: 0.2,
+          rotation: 0,
+        },
+        current.dimensions,
+      ),
+    }))
+    setSelected({ kind: 'car' })
+  }
+
+  function updateCar(patch) {
+    transient((current) => ({
+      ...current,
+      car: current.car ? clampCar({ ...current.car, ...patch }, current.dimensions) : null,
+    }))
+  }
+
+  function removeCar() {
+    commit((current) => ({ ...current, car: null }))
+    setSelected((current) => (current?.kind === 'car' ? null : current))
+  }
+
+  function removeItem(target) {
+    if (target.kind === 'window') {
+      commit((current) => ({
+        ...current,
+        windows: current.windows.filter((item) => item.id !== target.id),
+      }))
+    } else if (target.kind === 'furniture') {
+      commit((current) => ({
+        ...current,
+        furniture: current.furniture.filter((item) => item.id !== target.id),
+      }))
+    } else {
+      removeCar()
+      return
+    }
+    setSelected((current) => (current?.id === target.id ? null : current))
+  }
+
+  return (
+    <div className="flex h-dvh flex-col bg-[#ebe6de] md:flex-row">
+      <ControlPanel
+        dimensions={scene.dimensions}
+        onDimensionChange={updateDimension}
+        wallMaterialId={wallMaterial.id}
+        roofMaterialId={roofMaterial.id}
+        doorMaterialId={doorMaterial.id}
+        onWallMaterialChange={(wallMaterialId) => commit((current) => ({ ...current, wallMaterialId }))}
+        onRoofMaterialChange={(roofMaterialId) => commit((current) => ({ ...current, roofMaterialId }))}
+        onDoorMaterialChange={(doorMaterialId) => commit((current) => ({ ...current, doorMaterialId }))}
+        windows={scene.windows}
+        furniture={scene.furniture}
+        door={scene.door}
+        car={scene.car}
+        selected={selected}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
+        projectName={projectName}
+        projects={library.projects}
+        activeProjectId={library.activeId}
+        projectDirty={dirty}
+        saveError={saveError}
+        saveNotice={saveMessage}
+        storagePath={boot.directory}
+        onProjectNameChange={setProjectName}
+        onSaveProject={saveProject}
+        onNewProject={startNewProject}
+        onOpenProject={openProject}
+        onDeleteProject={deleteProject}
+        onSettle={endGesture}
+        onSelect={setSelected}
+        onAddWindow={addWindow}
+        onAddFurniture={addFurniture}
+        onChangeWindow={updateWindow}
+        onChangeFurniture={updateFurniture}
+        onDoorChange={updateDoor}
+        onAddCar={addCar}
+        onChangeCar={updateCar}
+        onRemoveCar={removeCar}
+        onRemove={removeItem}
+      />
+      <main className="relative min-h-0 flex-1">
+        <GarageCanvas
+          dimensions={scene.dimensions}
+          wallMaterial={wallMaterial}
+          roofMaterial={roofMaterial}
+          doorMaterial={doorMaterial}
+          windows={scene.windows}
+          furniture={scene.furniture}
+          door={scene.door}
+          car={scene.car}
+          selected={selected}
+          onSelect={setSelected}
+          onChangeWindow={updateWindow}
+          onChangeFurniture={updateFurniture}
+          onChangeCar={updateCar}
+          onGestureEnd={endGesture}
+        />
+      </main>
+    </div>
+  )
+}
