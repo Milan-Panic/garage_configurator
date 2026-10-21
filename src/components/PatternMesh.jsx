@@ -22,7 +22,7 @@ export function PatternMesh({ position, size, spec, u = 0, v = 0, rotation }) {
   )
 }
 
-function patternMaterial(spec) {
+export function patternMaterial(spec) {
   const cached = materials.get(spec.id)
   if (cached) return cached
   const map = new THREE.CanvasTexture(createTileCanvas(spec))

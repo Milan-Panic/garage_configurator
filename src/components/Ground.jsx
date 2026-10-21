@@ -38,6 +38,10 @@ export function Ground({ width, length, onClear }) {
         infiniteGrid={false}
         raycast={() => null}
       />
+      <mesh position={[0, -0.04, padZ]} receiveShadow>
+        <boxGeometry args={[padWidth + 0.5, 0.16, padLength + 0.5]} />
+        <meshStandardMaterial color="#8a8a86" roughness={0.96} metalness={0.02} />
+      </mesh>
       <mesh
         position={[0, FLOOR_LEVEL / 2, padZ]}
         receiveShadow

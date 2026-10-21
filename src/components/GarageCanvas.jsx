@@ -3,10 +3,12 @@ import { Canvas, useThree } from '@react-three/fiber'
 import { useLayoutEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { formatMeters } from '../config'
+import { roofGeometry } from '../roof'
 import { Car } from './Car'
 import { FurniturePiece } from './Furniture'
 import { Garage } from './Garage'
 import { Ground } from './Ground'
+import { PedestrianDoor } from './PedestrianDoor'
 import { WindowUnit } from './WindowUnit'
 
 export function GarageCanvas({
@@ -17,15 +19,22 @@ export function GarageCanvas({
   windows,
   furniture,
   door,
+  roof,
+  gutters = true,
+  pedestrianDoors = [],
   car,
   selected,
   onSelect,
   onChangeWindow,
+  onChangePedestrian,
   onChangeFurniture,
   onChangeCar,
   onGestureEnd,
 }) {
   const { width, length, height } = dimensions
+  const rise = roofGeometry(dimensions, roof).rise
+  const roofLabel =
+    roof.kind === 'mono' ? `Jedna voda ${roof.pitch}°` : roof.kind === 'duo' ? `Dve vode ${roof.pitch}°` : 'Ravan krov'
 
   return (
     <div className="absolute inset-0">
@@ -54,7 +63,7 @@ export function GarageCanvas({
           shadow-bias={-0.00025}
           shadow-normalBias={0.04}
         />
-        <FrameCamera width={width} length={length} height={height} />
+        <FrameCamera width={width} length={length} height={height + rise} />
         <Ground width={width} length={length} onClear={() => onSelect(null)} />
         <Garage
           width={width}
@@ -65,7 +74,21 @@ export function GarageCanvas({
           doorMaterial={doorMaterial}
           windows={windows}
           door={door}
+          roof={roof}
+          gutters={gutters}
+          pedestrianDoors={pedestrianDoors}
         />
+        {pedestrianDoors.map((item) => (
+          <PedestrianDoor
+            key={item.id}
+            item={item}
+            dimensions={dimensions}
+            selected={selected?.kind === 'pedestrian' && selected.id === item.id}
+            onSelect={() => onSelect({ kind: 'pedestrian', id: item.id })}
+            onChange={(patch) => onChangePedestrian(item.id, patch)}
+            onGestureEnd={onGestureEnd}
+          />
+        ))}
         {windows.map((item) => (
           <WindowUnit
             key={item.id}
@@ -101,6 +124,7 @@ export function GarageCanvas({
         <span className="font-medium text-stone-900">
           {formatMeters(width).replace(' m', '')} × {formatMeters(length).replace(' m', '')} × {formatMeters(height)}
         </span>
+        <span className="mt-0.5 block text-xs text-stone-500">{roofLabel}</span>
         <span className="mt-0.5 block text-xs text-stone-500">
           Prazan prostor rotira pogled. Predmet prevuci da ga pomeriš. Ctrl+Z vraća izmenu.
         </span>

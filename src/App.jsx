@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { ControlPanel } from './components/ControlPanel'
 import { GarageCanvas } from './components/GarageCanvas'
+import { SiteHeader } from './components/SiteHeader'
+import { usePath } from './nav'
+import { HomePage } from './pages/HomePage'
+import { CraftsmenPage } from './pages/CraftsmenPage'
+import { PricesPage } from './pages/PricesPage'
 import { clampDimension } from './config'
 import { DOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, findMaterial } from './materials'
 import { useHistory } from './history'
-import { FURNITURE_TYPES, WINDOW_TYPES, clampCar, clampFurniture, clampWindow } from './layout'
+import { FURNITURE_TYPES, PEDESTRIAN_DEFAULT, WINDOW_TYPES, clampCar, clampDoor, clampFurniture, clampPedestrian, clampWindow, defaultDoorSize } from './layout'
 import {
   createProjectId,
   isSceneDirty,
@@ -49,17 +54,38 @@ export default function App() {
   }, [])
 
   if (bootError) {
-    return <StatusScreen message={bootError} />
+    return (
+      <Shell>
+        <StatusScreen message={bootError} />
+      </Shell>
+    )
   }
   if (!boot) {
-    return <StatusScreen message="Učitavam garaže…" />
+    return (
+      <Shell>
+        <StatusScreen message="Učitavam garaže…" />
+      </Shell>
+    )
   }
-  return <Configurator boot={boot} />
+  return (
+    <Shell>
+      <Configurator boot={boot} />
+    </Shell>
+  )
+}
+
+function Shell({ children }) {
+  return (
+    <div className="flex h-dvh flex-col bg-[#ebe6de]">
+      <SiteHeader />
+      <div className="min-h-0 flex-1">{children}</div>
+    </div>
+  )
 }
 
 function StatusScreen({ message }) {
   return (
-    <div className="flex h-dvh items-center justify-center bg-[#ebe6de] px-6 text-center text-stone-600">
+    <div className="flex h-full items-center justify-center px-6 text-center text-stone-600">
       {message}
     </div>
   )
@@ -82,6 +108,13 @@ function Configurator({ boot }) {
   const wallMaterial = findMaterial(WALL_MATERIALS, scene.wallMaterialId)
   const roofMaterial = findMaterial(ROOF_MATERIALS, scene.roofMaterialId)
   const doorMaterial = findMaterial(DOOR_MATERIALS, scene.doorMaterialId)
+  const door = Number.isFinite(scene.door?.width)
+    ? scene.door
+    : clampDoor(
+        { ...scene.door, ...defaultDoorSize(scene.dimensions), wall: scene.door?.wall ?? 'front' },
+        scene.dimensions,
+      )
+  const path = usePath()
   const activeProject = library.projects.find((project) => project.id === library.activeId) ?? null
   const dirty = isSceneDirty(activeProject, projectName, scene)
   const saveMessage =
@@ -214,6 +247,8 @@ function Configurator({ boot }) {
         ...current,
         dimensions,
         windows: current.windows.map((item) => clampWindow(item, dimensions)),
+        door: clampDoor(current.door?.width ? current.door : { ...current.door, ...defaultDoorSize(dimensions) }, dimensions),
+        pedestrianDoors: (current.pedestrianDoors || []).map((item) => clampPedestrian(item, dimensions, current.door)),
         furniture: current.furniture.map((item) => clampFurniture(item, dimensions)),
         car: current.car ? clampCar(current.car, dimensions) : null,
       }
@@ -240,6 +275,57 @@ function Configurator({ boot }) {
       return { ...current, windows: [...current.windows, item] }
     })
     setSelected({ kind: 'window', id })
+  }
+
+  function copyWindow(id) {
+    const nextId = createId('window')
+    commit((current) => {
+      const source = current.windows.find((item) => item.id === id)
+      if (!source) return current
+      const shifted = { ...clampWindow({ ...source, id: nextId, along: source.along + source.width + 0.12 }, current.dimensions), id: nextId }
+      const item =
+        Math.abs(shifted.along - source.along) > 0.05
+          ? shifted
+          : { ...clampWindow({ ...source, id: nextId, along: source.along - source.width - 0.12 }, current.dimensions), id: nextId }
+      return { ...current, windows: [...current.windows, item] }
+    })
+    setSelected({ kind: 'window', id: nextId })
+  }
+
+  function addPedestrian() {
+    const id = createId('pesacka')
+    commit((current) => {
+      const count = (current.pedestrianDoors || []).filter((item) => item.wall === 'left').length
+      const item = clampPedestrian(
+        {
+          id,
+          wall: 'left',
+          along: count === 0 ? -1.2 : 1.2,
+          width: PEDESTRIAN_DEFAULT.width,
+          height: PEDESTRIAN_DEFAULT.height,
+        },
+        current.dimensions,
+        current.door,
+      )
+      return { ...current, pedestrianDoors: [...(current.pedestrianDoors || []), item] }
+    })
+    setSelected({ kind: 'pedestrian', id })
+  }
+
+  function updatePedestrian(id, patch) {
+    const apply = (current) => ({
+      ...current,
+      pedestrianDoors: (current.pedestrianDoors || []).map((item) =>
+        item.id === id ? clampPedestrian({ ...item, ...patch }, current.dimensions, current.door) : item,
+      ),
+    })
+    if (Object.prototype.hasOwnProperty.call(patch, 'along') || Object.prototype.hasOwnProperty.call(patch, 'width') || Object.prototype.hasOwnProperty.call(patch, 'height')) {
+      transient(apply)
+    } else commit(apply)
+  }
+
+  function updateGutters(gutters) {
+    commit((current) => ({ ...current, gutters }))
   }
 
   function addFurniture(typeId) {
@@ -283,8 +369,28 @@ function Configurator({ boot }) {
   }
 
   function updateDoor(patch) {
-    const apply = (current) => ({ ...current, door: { ...current.door, ...patch } })
-    if (Object.prototype.hasOwnProperty.call(patch, 'open')) transient(apply)
+    const apply = (current) => {
+      const base = Number.isFinite(current.door?.width)
+        ? current.door
+        : { ...current.door, ...defaultDoorSize(current.dimensions), wall: current.door?.wall ?? 'front' }
+      const door = clampDoor({ ...base, ...patch }, current.dimensions)
+      let doorMaterialId = current.doorMaterialId
+      if (patch.style === 'roller' && !String(doorMaterialId).startsWith('rolo')) {
+        doorMaterialId = String(doorMaterialId).includes('bela') ? 'rolo-bela' : 'rolo-antracit'
+      }
+      if ((patch.style === 'single' || patch.style === 'double') && String(doorMaterialId).startsWith('rolo')) {
+        doorMaterialId = 'sekcijska-antracit'
+      }
+      return { ...current, door, doorMaterialId }
+    }
+    const sliding = ['open', 'along', 'width', 'height'].some((key) => Object.prototype.hasOwnProperty.call(patch, key))
+    if (sliding) transient(apply)
+    else commit(apply)
+  }
+
+  function updateRoof(patch) {
+    const apply = (current) => ({ ...current, roof: { ...current.roof, ...patch } })
+    if (Object.prototype.hasOwnProperty.call(patch, 'pitch')) transient(apply)
     else commit(apply)
   }
 
@@ -329,6 +435,11 @@ function Configurator({ boot }) {
         ...current,
         furniture: current.furniture.filter((item) => item.id !== target.id),
       }))
+    } else if (target.kind === 'pedestrian') {
+      commit((current) => ({
+        ...current,
+        pedestrianDoors: (current.pedestrianDoors || []).filter((item) => item.id !== target.id),
+      }))
     } else {
       removeCar()
       return
@@ -337,7 +448,14 @@ function Configurator({ boot }) {
   }
 
   return (
-    <div className="flex h-dvh flex-col bg-[#ebe6de] md:flex-row">
+    <>
+      {path === '/majstori' && (
+        <CraftsmenPage scene={{ ...scene, door }} projectName={projectNameOrDefault(projectName)} />
+      )}
+      {path === '/cene' && <PricesPage />}
+      {path !== '/konfigurator' && path !== '/majstori' && path !== '/cene' && <HomePage />}
+      {path === '/konfigurator' && (
+    <div className="flex h-full flex-col bg-[#ebe6de] md:flex-row">
       <ControlPanel
         dimensions={scene.dimensions}
         onDimensionChange={updateDimension}
@@ -349,7 +467,8 @@ function Configurator({ boot }) {
         onDoorMaterialChange={(doorMaterialId) => commit((current) => ({ ...current, doorMaterialId }))}
         windows={scene.windows}
         furniture={scene.furniture}
-        door={scene.door}
+        door={door}
+        roof={scene.roof}
         car={scene.car}
         selected={selected}
         canUndo={canUndo}
@@ -371,10 +490,17 @@ function Configurator({ boot }) {
         onSettle={endGesture}
         onSelect={setSelected}
         onAddWindow={addWindow}
+        onCopyWindow={copyWindow}
         onAddFurniture={addFurniture}
         onChangeWindow={updateWindow}
         onChangeFurniture={updateFurniture}
         onDoorChange={updateDoor}
+        onRoofChange={updateRoof}
+        gutters={scene.gutters !== false}
+        onGuttersChange={updateGutters}
+        pedestrianDoors={scene.pedestrianDoors || []}
+        onAddPedestrian={addPedestrian}
+        onChangePedestrian={updatePedestrian}
         onAddCar={addCar}
         onChangeCar={updateCar}
         onRemoveCar={removeCar}
@@ -388,16 +514,22 @@ function Configurator({ boot }) {
           doorMaterial={doorMaterial}
           windows={scene.windows}
           furniture={scene.furniture}
-          door={scene.door}
+          door={door}
+          roof={scene.roof}
+          gutters={scene.gutters !== false}
+          pedestrianDoors={scene.pedestrianDoors || []}
           car={scene.car}
           selected={selected}
           onSelect={setSelected}
           onChangeWindow={updateWindow}
+          onChangePedestrian={updatePedestrian}
           onChangeFurniture={updateFurniture}
           onChangeCar={updateCar}
           onGestureEnd={endGesture}
         />
       </main>
     </div>
+      )}
+    </>
   )
 }

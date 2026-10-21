@@ -1,57 +1,34 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
-import { FLOOR_LEVEL, PANEL_THICKNESS, ROOF_OVERHANG, ROOF_THICKNESS } from '../config'
 import { wallFrame, wallPanels } from '../layout'
 import { GarageDoor } from './GarageDoor'
 import { PatternMesh } from './PatternMesh'
+import { Roof } from './Roof'
 
-const WALL_IDS = ['left', 'right', 'back']
+const WALL_IDS = ['front', 'back', 'left', 'right']
 
-export function Garage({ width, length, height, wallMaterial, roofMaterial, doorMaterial, windows = [], door }) {
-  const innerWidth = width - PANEL_THICKNESS * 2
-  const jamb = 0.24
-  const header = 0.3
-  const openingWidth = innerWidth - jamb * 2
-  const frontZ = length / 2 - PANEL_THICKNESS / 2
-  const wallY = FLOOR_LEVEL + height / 2
-
+export function Garage({ width, length, height, wallMaterial, roofMaterial, doorMaterial, windows = [], door, roof, gutters = true, pedestrianDoors = [] }) {
+  const dimensions = { width, length, height }
   return (
     <group>
       {WALL_IDS.map((id) => (
         <Wall
           key={id}
           id={id}
-          dimensions={{ width, length, height }}
+          dimensions={dimensions}
           material={wallMaterial}
           windows={windows.filter((item) => item.wall === id)}
+          pedestrians={pedestrianDoors.filter((item) => item.wall === id)}
+          door={door}
+          doorMaterial={doorMaterial}
         />
       ))}
-      <PatternMesh
-        position={[-innerWidth / 2 + jamb / 2, wallY, frontZ]}
-        size={[jamb, height, PANEL_THICKNESS]}
-        spec={wallMaterial}
-      />
-      <PatternMesh
-        position={[innerWidth / 2 - jamb / 2, wallY, frontZ]}
-        size={[jamb, height, PANEL_THICKNESS]}
-        spec={wallMaterial}
-      />
-      <PatternMesh
-        position={[0, FLOOR_LEVEL + height - header / 2, frontZ]}
-        size={[openingWidth, header, PANEL_THICKNESS]}
-        spec={wallMaterial}
-      />
-      <GarageDoor dimensions={{ width, length, height }} material={doorMaterial} door={door} />
-      <PatternMesh
-        position={[0, FLOOR_LEVEL + height + ROOF_THICKNESS / 2, 0]}
-        size={[width + ROOF_OVERHANG * 2, ROOF_THICKNESS, length + ROOF_OVERHANG * 2]}
-        spec={roofMaterial}
-      />
+      <Roof dimensions={dimensions} roof={roof} wallMaterial={wallMaterial} roofMaterial={roofMaterial} gutters={gutters} />
     </group>
   )
 }
 
-function Wall({ id, dimensions, material, windows }) {
+function Wall({ id, dimensions, material, windows, pedestrians = [], door, doorMaterial }) {
   const wall = wallFrame(id, dimensions)
   const quaternion = useMemo(() => {
     const basis = new THREE.Matrix4().makeBasis(
@@ -61,16 +38,19 @@ function Wall({ id, dimensions, material, windows }) {
     )
     return new THREE.Quaternion().setFromRotationMatrix(basis)
   }, [wall.axis, wall.normal])
-  const panels = wallPanels(
-    wall.span,
-    wall.height,
-    windows.map((item) => ({
-      along: item.along,
-      sill: item.sill + 0.012,
-      width: Math.max(0.1, item.width - 0.024),
-      height: Math.max(0.1, item.height - 0.024),
-    })),
-  )
+  const openings = windows.map((item) => ({
+    along: item.along,
+    sill: item.sill + 0.012,
+    width: Math.max(0.1, item.width - 0.024),
+    height: Math.max(0.1, item.height - 0.024),
+  }))
+  if (door?.style !== 'none' && door.wall === id) {
+    openings.push({ along: door.along, sill: 0, width: door.width, height: door.height })
+  }
+  pedestrians.forEach((item) => {
+    openings.push({ along: item.along, sill: 0, width: item.width, height: item.height })
+  })
+  const panels = wallPanels(wall.span, wall.height, openings)
 
   return (
     <group position={wall.origin} quaternion={quaternion}>
@@ -84,6 +64,7 @@ function Wall({ id, dimensions, material, windows }) {
           v={panel.v0}
         />
       ))}
+      {door?.style !== 'none' && door.wall === id && <GarageDoor door={door} material={doorMaterial} />}
     </group>
   )
 }

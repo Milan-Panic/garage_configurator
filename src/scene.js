@@ -1,9 +1,11 @@
 import { DEFAULT_DIMENSIONS, clampDimension } from './config'
 import { DEFAULT_MATERIALS, resolveMaterials } from './materials'
-import { FURNITURE_TYPES, WINDOW_TYPES, clampCar, clampFurniture, clampWindow } from './layout'
+import { FURNITURE_TYPES, WINDOW_TYPES, WALL_IDS, clampCar, clampDoor, clampFurniture, clampPedestrian, clampWindow, defaultDoorSize } from './layout'
+import { initialRoof, normalizeRoof } from './roof'
 
-const DOOR_STYLES = ['none', 'single', 'double']
-const WALLS = ['back', 'left', 'right']
+const DOOR_STYLES = ['none', 'single', 'double', 'roller']
+
+const sizedDoor = defaultDoorSize(DEFAULT_DIMENSIONS)
 
 export const initialScene = {
   dimensions: DEFAULT_DIMENSIONS,
@@ -12,7 +14,10 @@ export const initialScene = {
   doorMaterialId: DEFAULT_MATERIALS.door,
   windows: [],
   furniture: [],
-  door: { style: 'single', wicket: false, open: 0.55 },
+  door: { style: 'single', wicket: false, open: 0.55, wall: 'front', along: 0, ...sizedDoor },
+  gutters: true,
+  pedestrianDoors: [],
+  roof: initialRoof,
   car: null,
 }
 
@@ -22,7 +27,7 @@ export function scenesEqual(left, right) {
 
 export function highestSerial(scene) {
   let max = 0
-  for (const item of [...scene.windows, ...scene.furniture]) {
+  for (const item of [...scene.windows, ...scene.furniture, ...(scene.pedestrianDoors || [])]) {
     const match = /-(\d+)$/.exec(String(item.id ?? ''))
     if (match) max = Math.max(max, Number(match[1]))
   }
@@ -42,7 +47,7 @@ export function normalizeScene(raw) {
       {
         id: item.id,
         type: WINDOW_TYPES.some((entry) => entry.id === item.type) ? item.type : WINDOW_TYPES[0].id,
-        wall: WALLS.includes(item.wall) ? item.wall : 'back',
+        wall: WALL_IDS.includes(item.wall) ? item.wall : 'back',
         along: item.along,
         sill: item.sill,
         width: item.width,
@@ -68,11 +73,20 @@ export function normalizeScene(raw) {
   )
   const style = DOOR_STYLES.includes(source.door?.style) ? source.door.style : initialScene.door.style
   const open = clampUnit(source.door?.open, initialScene.door.open)
-  const door = {
-    style,
-    wicket: Boolean(source.door?.wicket) && style !== 'none',
-    open,
-  }
+  const fallback = defaultDoorSize(dimensions)
+  const door = clampDoor(
+    {
+      style,
+      wicket: Boolean(source.door?.wicket) && (style === 'single' || style === 'double'),
+      open,
+      wall: source.door?.wall,
+      along: source.door?.along ?? 0,
+      width: source.door?.width ?? fallback.width,
+      height: source.door?.height ?? fallback.height,
+    },
+    dimensions,
+  )
+  const roof = normalizeRoof(source.roof)
   const car =
     source.car && typeof source.car === 'object'
       ? clampCar(
@@ -88,7 +102,22 @@ export function normalizeScene(raw) {
         )
       : null
 
-  return { dimensions, ...materials, windows, furniture, door, car }
+  const pedestrianDoors = uniqueItems(Array.isArray(source.pedestrianDoors) ? source.pedestrianDoors : [], 'pesacka').map(
+    (item) =>
+      clampPedestrian(
+        {
+          id: item.id,
+          wall: item.wall,
+          along: item.along,
+          width: item.width ?? 0.9,
+          height: item.height ?? 2.05,
+        },
+        dimensions,
+        door,
+      ),
+  )
+
+  return { dimensions, ...materials, windows, furniture, door, gutters: source.gutters !== false, pedestrianDoors, roof, car }
 }
 
 function uniqueItems(items, prefix) {

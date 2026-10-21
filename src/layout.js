@@ -55,6 +55,18 @@ export const FURNITURE_TYPES = [
 
 export function wallFrame(id, { width, length, height }) {
   const thickness = PANEL_THICKNESS
+  if (id === 'front') {
+    return {
+      id,
+      label: 'Prednji zid',
+      span: width - thickness * 2,
+      height,
+      thickness,
+      origin: [0, FLOOR_LEVEL, length / 2 - thickness / 2],
+      axis: [-1, 0, 0],
+      normal: [0, 0, -1],
+    }
+  }
   if (id === 'back') {
     return {
       id,
@@ -88,6 +100,69 @@ export function wallFrame(id, { width, length, height }) {
     origin: [width / 2 - thickness / 2, FLOOR_LEVEL, 0],
     axis: [0, 0, 1],
     normal: [-1, 0, 0],
+  }
+}
+
+export const WALL_IDS = ['front', 'back', 'left', 'right']
+
+export function defaultDoorSize(dimensions) {
+  const wall = wallFrame('front', dimensions)
+  return {
+    width: Math.round((wall.span - 0.48) * 100) / 100,
+    height: Math.round((dimensions.height - 0.3) * 100) / 100,
+  }
+}
+
+export function clampDoor(door, dimensions) {
+  const wallId = WALL_IDS.includes(door.wall) ? door.wall : 'front'
+  const wall = wallFrame(wallId, dimensions)
+  const width = clamp(door.width, 1.2, Math.max(1.2, wall.span - 0.16))
+  const height = clamp(door.height, 1.8, Math.max(1.8, dimensions.height - 0.08))
+  const maxAlong = Math.max(0, wall.span / 2 - width / 2 - 0.06)
+  const along = clamp(door.along ?? 0, -maxAlong, maxAlong)
+  return { ...door, wall: wallId, width, height, along }
+}
+
+export function doorSliderLimits(door, dimensions) {
+  const wall = wallFrame(door.wall, dimensions)
+  const maxWidth = Math.max(1.2, wall.span - 0.16)
+  const maxHeight = Math.max(1.8, dimensions.height - 0.08)
+  const maxAlong = Math.max(0, wall.span / 2 - door.width / 2 - 0.06)
+  return {
+    width: { min: 1.2, max: maxWidth, step: 0.05 },
+    height: { min: 1.8, max: maxHeight, step: 0.05 },
+    along: { min: -maxAlong, max: maxAlong, step: 0.05 },
+  }
+}
+
+export const PEDESTRIAN_DEFAULT = { width: 0.9, height: 2.05 }
+
+export function clampPedestrian(item, dimensions, door) {
+  const wallId = WALL_IDS.includes(item.wall) ? item.wall : 'left'
+  const wall = wallFrame(wallId, dimensions)
+  const width = clamp(item.width, 0.7, Math.min(1.2, Math.max(0.7, wall.span - 0.2)))
+  const height = clamp(item.height, 1.9, Math.max(1.9, dimensions.height - 0.08))
+  const maxAlong = Math.max(0, wall.span / 2 - width / 2 - 0.08)
+  let along = clamp(item.along, -maxAlong, maxAlong)
+  if (door && door.style !== 'none' && door.wall === wallId && Number.isFinite(door.width)) {
+    const gap = width / 2 + door.width / 2 + 0.1
+    if (Math.abs(along - door.along) < gap) {
+      const direction = along >= door.along ? 1 : -1
+      along = clamp(door.along + direction * gap, -maxAlong, maxAlong)
+    }
+  }
+  return { ...item, wall: wallId, width, height, along }
+}
+
+export function pedestrianSliderLimits(item, dimensions) {
+  const wall = wallFrame(item.wall, dimensions)
+  const maxWidth = Math.min(1.2, Math.max(0.7, wall.span - 0.2))
+  const maxHeight = Math.max(1.9, dimensions.height - 0.08)
+  const maxAlong = Math.max(0, wall.span / 2 - item.width / 2 - 0.08)
+  return {
+    width: { min: 0.7, max: maxWidth, step: 0.05 },
+    height: { min: 1.9, max: maxHeight, step: 0.05 },
+    along: { min: -maxAlong, max: maxAlong, step: 0.05 },
   }
 }
 
@@ -223,14 +298,6 @@ export const CAR_LIMITS = {
   length: [3.4, 5.6],
   width: [1.6, 2.2],
   height: [1.3, 2.05],
-}
-
-export function frontOpening({ width, length, height }) {
-  return {
-    width: width - PANEL_THICKNESS * 2 - 0.48,
-    height: height - 0.3,
-    z: length / 2 - PANEL_THICKNESS / 2,
-  }
 }
 
 export function clampCar(item, dimensions) {
