@@ -7,69 +7,6 @@ export const SKILLS = [
   { id: 'stolarija', name: 'Prozori i krilna vrata' },
 ]
 
-export const CRAFTSMEN = [
-  {
-    id: 'bravar-ns',
-    profession: 'Bravar čelične konstrukcije',
-    shop: 'Radionica okvira',
-    city: 'Novi Sad',
-    skills: ['konstrukcija'],
-    does: 'Stubovi, venci, rogovi i zidni pojasevi po crtežu.',
-  },
-  {
-    id: 'limar-krov',
-    profession: 'Limar pokrivača',
-    shop: 'Krov i opšivka',
-    city: 'Beograd',
-    skills: ['krov'],
-    does: 'Trapez, limeni crep i slemenska opšivka. Oluk ne ulazi u ovaj upit.',
-  },
-  {
-    id: 'limar-oluk',
-    profession: 'Limar oluka',
-    shop: 'Oluci na strehi',
-    city: 'Beograd',
-    skills: ['oluk'],
-    does: 'Polukružni oluk, čela i olučne cevi.',
-  },
-  {
-    id: 'limar-oba',
-    profession: 'Limar',
-    shop: 'Lim i oluk',
-    city: 'Zemun',
-    skills: ['krov', 'oluk'],
-    does: 'Radi i krov i oluk. Svaki posao stiže kao poseban upit.',
-  },
-  {
-    id: 'rolo-pancevo',
-    profession: 'Monter rolo vrata',
-    shop: 'Rolo servis',
-    city: 'Pančevo',
-    skills: ['rolo'],
-    does: 'Rolo vrata po širini i visini otvora.',
-  },
-  {
-    id: 'stolarija-pancevo',
-    profession: 'Bravar krila i prozora',
-    shop: 'Krilo i prozor',
-    city: 'Pančevo',
-    skills: ['stolarija'],
-    does: 'Krilna garažna vrata, bočna pešačka vrata i prozori.',
-  },
-  {
-    id: 'zidar-su',
-    profession: 'Zidar',
-    shop: 'Temelj i ploča',
-    city: 'Subotica',
-    skills: ['temelj'],
-    does: 'Betonska ploča: cement, pesak, šljunak i armaturna mreža.',
-  },
-]
-
-export function craftsmenWith(skill) {
-  return CRAFTSMEN.filter((entry) => entry.skills.includes(skill))
-}
-
 export function jobsFor(scene) {
   const jobs = [
     {

@@ -6,6 +6,9 @@ import { usePath } from './nav'
 import { HomePage } from './pages/HomePage'
 import { CraftsmenPage } from './pages/CraftsmenPage'
 import { PricesPage } from './pages/PricesPage'
+import { WorkshopPage } from './pages/WorkshopPage'
+import { AdminPage } from './pages/AdminPage'
+import { adoptVisitorKey } from './visitor'
 import { clampDimension } from './config'
 import { DOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, findMaterial } from './materials'
 import { useHistory } from './history'
@@ -83,6 +86,33 @@ function Shell({ children }) {
   )
 }
 
+function ResumePage({ token }) {
+  const [message, setMessage] = useState('Vraćam sačuvane garaže…')
+
+  useEffect(() => {
+    let stop = false
+    fetch('/api/visitor/resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    })
+      .then(async (response) => {
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload.error || 'Link nije važeći.')
+        adoptVisitorKey(payload.visitorKey)
+        window.location.replace('/')
+      })
+      .catch((error) => {
+        if (!stop) setMessage(error.message || 'Link nije važeći.')
+      })
+    return () => {
+      stop = true
+    }
+  }, [token])
+
+  return <div className="flex h-full items-center justify-center px-6 text-center text-stone-700">{message}</div>
+}
+
 function StatusScreen({ message }) {
   return (
     <div className="flex h-full items-center justify-center px-6 text-center text-stone-600">
@@ -115,6 +145,7 @@ function Configurator({ boot }) {
         scene.dimensions,
       )
   const path = usePath()
+  const resumeMatch = /^\/nastavi\/([a-f0-9]{24,80})$/.exec(path)
   const activeProject = library.projects.find((project) => project.id === library.activeId) ?? null
   const dirty = isSceneDirty(activeProject, projectName, scene)
   const saveMessage =
@@ -453,7 +484,10 @@ function Configurator({ boot }) {
         <CraftsmenPage scene={{ ...scene, door }} projectName={projectNameOrDefault(projectName)} />
       )}
       {path === '/cene' && <PricesPage />}
-      {path !== '/konfigurator' && path !== '/majstori' && path !== '/cene' && <HomePage />}
+      {path === '/radionica' && <WorkshopPage />}
+      {path === '/admin' && <AdminPage />}
+      {resumeMatch && <ResumePage token={resumeMatch[1]} />}
+      {path !== '/konfigurator' && path !== '/majstori' && path !== '/cene' && path !== '/radionica' && path !== '/admin' && !resumeMatch && <HomePage />}
       {path === '/konfigurator' && (
     <div className="flex h-full flex-col bg-[#ebe6de] md:flex-row">
       <ControlPanel

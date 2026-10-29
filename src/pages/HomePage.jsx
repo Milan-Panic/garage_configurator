@@ -1,24 +1,57 @@
+import { useEffect, useState } from 'react'
 import { navigate } from '../nav'
 import { DOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, findMaterial } from '../materials'
+import { buildEstimate } from '../estimate'
+import { formatDin, mergePrices, orientationQuote } from '../prices'
 import { initialScene } from '../scene'
 import { GarageView } from '../components/GarageView'
+import { SKILLS } from './craftsmen'
+
+const exampleTotal = Object.values(
+  orientationQuote(initialScene, buildEstimate(initialScene), mergePrices(null)),
+).reduce((sum, group) => sum + group.total, 0)
 
 const steps = [
   {
-    title: 'Složi garažu',
-    text: 'Širina, dužina, visina, krov na jednu ili dve vode, vrata i prozori. Vidiš objekat dok ga meriš.',
+    title: 'Nacrtaj',
+    text: 'Prvi dolazak kreće od prazne garaže. Sačuvano ostaje u ovom pregledaču, pa sledeći put nastavljaš odatle.',
   },
   {
-    title: 'Dobiješ računicu i crtež',
-    text: 'Spisak profila, tabli i okova, plus tlocrt i dve fasade sa kotama glavnih delova.',
+    title: 'Vidi orijentacionu cenu',
+    text: 'Cena ide po poslu. To je orijentacija iz količina, a majstor kasnije kaže svoju.',
   },
   {
-    title: 'Pošalji majstoru',
-    text: 'Izabereš profesiju koja to radi i proslediš upit. Majstor dobija mere, ne prazan opis.',
+    title: 'Pošalji upit',
+    text: 'Ime, prezime, imejl i telefon ostavljaš tek ovde. Svaki posao ide posebnim upitom majstoru koji ima taj skil.',
+  },
+  {
+    title: 'Majstor zove posle odobrenja',
+    text: 'Upit prvo ide na pregled. Posle odobrenja majstor unosi cenu. Telefon se otvara kad se plati naknada od 10%.',
   },
 ]
 
+const questions = [
+  ['Da li je cena ponuda?', 'Orijentacija iz materijala i mera. Ponuda je cena koju majstor unese kad prihvati upit.'],
+  ['Da li treba nalog?', 'Crtež se pamti u pregledaču. Ime, prezime, imejl i telefon traže se na upitu.'],
+  ['Kada majstor dobija broj?', 'Kad se plati naknada od 10% na cenu koju je uneo. Ostatak cene ide njemu.'],
+  ['Šta je tih 10%?', 'Naknada platforme na prihvaćenu cenu. U adminu ostaje evidencija šta je plaćeno.'],
+  ['Ko vidi moje garaže?', 'Samo pregledač u kom su sačuvane. Link iz poruke otvara iste garaže na drugom uređaju.'],
+]
+
 export function HomePage() {
+  const [cities, setCities] = useState(['Beograd', 'Zemun', 'Novi Sad', 'Pančevo', 'Subotica'])
+
+  useEffect(() => {
+    fetch('/api/craftsmen')
+      .then((response) => response.json())
+      .then((payload) => {
+        const next = [...new Set((payload.craftsmen || []).map((entry) => entry.city).filter(Boolean))]
+        next.sort((left, right) => left.localeCompare(right, 'sr'))
+        if (next.length > 0) setCities(next)
+      })
+      .catch(() => {})
+  }, [])
+
   return (
     <div className="h-full overflow-y-auto">
       <section className="mx-auto grid max-w-6xl gap-10 px-6 py-14 md:grid-cols-[1.2fr_0.8fr] md:items-center md:py-20">
@@ -28,8 +61,8 @@ export function HomePage() {
             Složi garažu sam. Majstor dobija računicu i crtež.
           </h1>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-stone-700">
-            Mera je mesto gde garažu složiš pre nego što zoveš majstora. Odredi mere i krov, uzmi spisak materijala i
-            dvodimenzionalne crteže, pa pošalji upit onome ko ume da je napravi.
+            Mera je mesto gde garažu složiš pre nego što zoveš majstora. Crtež ostaje u tvom pregledaču. Orijentacionu
+            cenu vidiš odmah, a upit ide majstoru tek kad ostaviš ime, prezime, imejl i telefon, i kad bude odobren.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <button
@@ -52,7 +85,7 @@ export function HomePage() {
       </section>
 
       <section className="border-y border-stone-300 bg-[#f7f4ef]">
-        <div className="mx-auto grid max-w-6xl gap-6 px-6 py-12 md:grid-cols-3">
+        <div className="mx-auto grid max-w-6xl gap-6 px-6 py-12 md:grid-cols-2">
           {steps.map((step, index) => (
             <article key={step.title}>
               <p className="text-sm font-medium text-stone-500">0{index + 1}</p>
@@ -83,12 +116,12 @@ export function HomePage() {
       </section>
 
       <section className="mx-auto max-w-6xl px-6 py-12">
-        <h2 className="text-2xl font-semibold text-stone-950">Šta majstor dobija u upitu</h2>
+        <h2 className="text-2xl font-semibold text-stone-950">Šta dobijaš</h2>
         <ul className="mt-6 grid gap-4 md:grid-cols-3">
           {[
-            ['Računica', 'Koliko stubova, venaca, rogova, tabli lima, šarki i oluka. Krilo više od 2 m nosi 3 šarke.'],
-            ['Crteži', 'Tlocrt, prednja i leva strana, sa kotama širine, dužine, visine i otvora vrata.'],
-            ['Ista garaža', 'Upit ide sa garažom koja je trenutno otvorena u konfiguratoru, ne sa praznim obrascem.'],
+            ['3D i mere', 'Tlocrt i dve fasade sa kotama. Krilo više od 2 m nosi 3 šarke.'],
+            ['Računica po poslu', 'Konstrukcija, krov, oluk, ploča, rolo i stolarija ostaju razdvojeni.'],
+            ['Majstor za taj skil', 'U ponudi je samo radionica koja radi taj deo. Jedan majstor može da pokrije više poslova, svaki posebnim upitom.'],
           ].map(([title, text]) => (
             <li key={title} className="rounded-xl border border-stone-300 bg-white p-4">
               <h3 className="font-medium text-stone-950">{title}</h3>
@@ -96,6 +129,44 @@ export function HomePage() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="border-y border-stone-300 bg-[#f7f4ef]">
+        <div className="mx-auto max-w-6xl px-6 py-12">
+          <h2 className="text-2xl font-semibold text-stone-950">Primer orijentacione cene</h2>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-700">
+            Podrazumevana garaža iz konfiguratora, sa olukom i krilnim vratima, orijentaciono staje {formatDin(exampleTotal)}.
+            To nije ponuda majstora.
+          </p>
+          <ul className="mt-6 flex flex-wrap gap-2">
+            {SKILLS.map((skill) => (
+              <li key={skill.id} className="rounded-full border border-stone-300 bg-white px-3 py-1 text-sm text-stone-800">
+                {skill.name}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 py-12">
+        <h2 className="text-2xl font-semibold text-stone-950">Gradovi sa radionicama</h2>
+        <ul className="mt-4 flex flex-wrap gap-2">
+          {cities.map((city) => (
+            <li key={city} className="rounded-lg bg-white px-3 py-2 text-sm text-stone-800">{city}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-6 pb-16">
+        <h2 className="text-2xl font-semibold text-stone-950">Kratka pitanja</h2>
+        <div className="mt-4 space-y-3">
+          {questions.map(([title, text]) => (
+            <details key={title} className="rounded-xl border border-stone-300 bg-white px-4 py-3">
+              <summary className="cursor-pointer font-medium text-stone-950">{title}</summary>
+              <p className="mt-2 text-sm leading-relaxed text-stone-700">{text}</p>
+            </details>
+          ))}
+        </div>
       </section>
     </div>
   )

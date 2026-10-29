@@ -4,7 +4,9 @@ export const ROUTES = [
   { path: '/', label: 'Home' },
   { path: '/konfigurator', label: 'Garage Configurator' },
   { path: '/majstori', label: 'Majstori' },
+  { path: '/radionica', label: 'Radionica' },
   { path: '/cene', label: 'Cene' },
+  { path: '/admin', label: 'Admin' },
 ]
 
 const listeners = new Set()

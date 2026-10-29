@@ -635,7 +635,7 @@ function ProjectSection({
         <p className="text-xs leading-relaxed break-all text-stone-400">{storagePath}</p>
       )}
       {projects.length === 0 ? (
-        <p className="text-sm text-stone-500">Nema sačuvanih garaža.</p>
+        <p className="text-sm text-stone-500">Nema sačuvanih garaža u ovom pregledaču.</p>
       ) : (
         <ul className="space-y-1">
           {projects.map((project) => {
@@ -702,10 +702,10 @@ function projectStatus(active, dirty) {
   if (!active) {
     return dirty
       ? 'Još nije sačuvano. Osvježavanje stranice ne pamti ovu garažu.'
-      : 'Sačuvaj garažu da možeš kasnije da je otvoriš.'
+      : 'Sačuvaj garažu da sledeći put nastaviš. Vidi je samo ovaj pregledač.'
   }
   if (dirty) return 'Čuvam izmene…'
-  return `Sačuvano ${formatSavedAt(active.updatedAt)}. Upisano u fajl na ovom računaru.`
+  return `Sačuvano ${formatSavedAt(active.updatedAt)}. Vidi je samo ovaj pregledač.`
 }
 
 function WindowEditor({ item, dimensions, onChange, onSettle, onCopy, onRemove }) {

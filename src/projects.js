@@ -1,10 +1,11 @@
 import { initialScene, normalizeScene, scenesEqual } from './scene'
+import { visitorKey } from './visitor'
 
 const LEGACY_KEY = 'garage-projects-v1'
 const ID_PATTERN = /^project-[a-z0-9-]{4,80}$/
 
 export async function loadLibrary() {
-  const response = await fetch('/api/library')
+  const response = await fetch('/api/library', { headers: { 'X-Visitor-Key': visitorKey() } })
   if (!response.ok) throw new Error('Projekti se ne mogu učitati sa diska.')
   const payload = await response.json()
   let library = normalizeLibrary(payload)
@@ -28,7 +29,7 @@ export async function loadLibrary() {
 export async function persistLibrary(library) {
   const response = await fetch('/api/library', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Visitor-Key': visitorKey() },
     body: JSON.stringify({ activeId: library.activeId, projects: library.projects }),
   })
   if (!response.ok) throw new Error('Garaža nije sačuvana na disk.')

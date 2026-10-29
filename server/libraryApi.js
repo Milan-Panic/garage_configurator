@@ -1,8 +1,39 @@
 import path from 'node:path'
 import fs from 'node:fs/promises'
-import { createLibraryStore } from './libraryStore.js'
+import { configureMail, mailReady, sendMail } from './mailer.js'
+import {
+  adminEmail,
+  adminFromToken,
+  approveInquiry,
+  craftsmanFromToken,
+  createInquiry,
+  customerInquiries,
+  dueReminders,
+  getInquiry,
+  listAdminInquiries,
+  listCraftsmen,
+  logMail,
+  loginAdmin,
+  loginCraftsman,
+  markReminded,
+  openPlatform,
+  paidFees,
+  payInquiry,
+  publicUrl,
+  readVisitorLibrary,
+  recentMail,
+  registerCraftsman,
+  rejectInquiry,
+  respondInquiry,
+  resumeVisitor,
+  skillLabel,
+  withdrawInquiry,
+  workshopInquiries,
+  writeVisitorLibrary,
+} from './platformDb.js'
 
 const MAX_BODY = 12_000_000
+let remindersStarted = false
 
 export function libraryApi() {
   return {
@@ -17,8 +48,9 @@ export function libraryApi() {
 }
 
 function createMiddleware(root) {
-  const projectsDir = path.resolve(root, 'data/projects')
-  const store = createLibraryStore(projectsDir)
+  configureMail(root)
+  openPlatform(root)
+  startReminders()
 
   return (req, res, next) => {
     const url = req.url?.split('?')[0]
@@ -29,6 +61,115 @@ function createMiddleware(root) {
       })
       return
     }
+    if (url === '/api/craftsmen' && req.method === 'GET') {
+      sendJson(res, 200, { craftsmen: listCraftsmen() })
+      return
+    }
+    if (url === '/api/workshop/register' && req.method === 'POST') {
+      handleJson(req, res, (raw) => {
+        const result = registerCraftsman(raw)
+        if (result.error) return sendJson(res, 400, result)
+        sendJson(res, 200, result)
+      })
+      return
+    }
+    if (url === '/api/workshop/login' && req.method === 'POST') {
+      handleJson(req, res, (raw) => {
+        const result = loginCraftsman(raw.email, raw.password)
+        if (!result) return sendJson(res, 401, { error: 'Imejl ili lozinka nisu tačni.' })
+        sendJson(res, 200, result)
+      })
+      return
+    }
+    if (url === '/api/workshop/inquiries' && req.method === 'GET') {
+      const craftsman = craftsmanFromToken(bearer(req))
+      if (!craftsman) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      sendJson(res, 200, { craftsman, inquiries: workshopInquiries(craftsman.id) })
+      return
+    }
+    if (url?.startsWith('/api/workshop/inquiries/') && req.method === 'POST') {
+      const craftsman = craftsmanFromToken(bearer(req))
+      if (!craftsman) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      const id = decodeURIComponent(url.slice('/api/workshop/inquiries/'.length))
+      handleJson(req, res, (raw) => {
+        const result = respondInquiry(craftsman.id, id, raw.decision, raw.price)
+        if (result.error) return sendJson(res, 400, result)
+        sendJson(res, 200, result)
+      })
+      return
+    }
+    if (url === '/api/admin/login' && req.method === 'POST') {
+      handleJson(req, res, (raw) => {
+        const result = loginAdmin(raw.email, raw.password)
+        if (!result) return sendJson(res, 401, { error: 'Imejl ili lozinka nisu tačni.' })
+        sendJson(res, 200, result)
+      })
+      return
+    }
+    if (url === '/api/admin/inquiries' && req.method === 'GET') {
+      const admin = adminFromToken(bearer(req))
+      if (!admin) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      runReminders()
+        .then(() => {
+          sendJson(res, 200, {
+            admin,
+            inquiries: listAdminInquiries(),
+            fees: paidFees(),
+            mail: recentMail(),
+            mailReady: mailReady(),
+          })
+        })
+        .catch((error) => {
+          console.error(error)
+          sendJson(res, 500, { error: 'Upiti nisu učitani.' })
+        })
+      return
+    }
+    if (url?.startsWith('/api/admin/inquiries/') && req.method === 'POST') {
+      const admin = adminFromToken(bearer(req))
+      if (!admin) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      const id = decodeURIComponent(url.slice('/api/admin/inquiries/'.length))
+      handleJson(req, res, async (raw) => {
+        const result = raw.decision === 'reject' ? rejectInquiry(id) : approveInquiry(id)
+        if (result.error) return sendJson(res, 400, result)
+        if (raw.decision === 'reject') await notifyRejected(result.inquiry)
+        else await notifyApproved(result.inquiry)
+        sendJson(res, 200, { ok: true })
+      })
+      return
+    }
+    if (url === '/api/visitor/resume' && req.method === 'POST') {
+      handleJson(req, res, (raw) => {
+        const visitorKey = resumeVisitor(raw.token)
+        if (!visitorKey) return sendJson(res, 404, { error: 'Link više ne važi.' })
+        sendJson(res, 200, { visitorKey })
+      })
+      return
+    }
+    if (url === '/api/customer/inquiries' && req.method === 'GET') {
+      sendJson(res, 200, { inquiries: customerInquiries(req.headers['x-customer-key']) })
+      return
+    }
+    if (url?.startsWith('/api/customer/inquiries/') && url.endsWith('/pay') && req.method === 'POST') {
+      const id = decodeURIComponent(url.slice('/api/customer/inquiries/'.length, -'/pay'.length))
+      handleJson(req, res, (raw) => {
+        const result = payInquiry(raw.key || req.headers['x-customer-key'], id)
+        if (result.error) return sendJson(res, 400, result)
+        sendJson(res, 200, result)
+      })
+      return
+    }
+    if (url?.startsWith('/api/customer/inquiries/') && url.endsWith('/withdraw') && req.method === 'POST') {
+      const id = decodeURIComponent(url.slice('/api/customer/inquiries/'.length, -'/withdraw'.length))
+      const result = withdrawInquiry(req.headers['x-customer-key'], id)
+      if (result.error) return sendJson(res, 400, result)
+      sendJson(res, 200, result)
+      return
+    }
+    if (url?.startsWith('/api/inquiry-views/') && req.method === 'GET') {
+      serveView(root, url, res)
+      return
+    }
     if (url === '/api/inquiries') {
       handleInquiry(root, req, res).catch((error) => {
         console.error(error)
@@ -37,33 +178,80 @@ function createMiddleware(root) {
       return
     }
     if (url !== '/api/library') return next()
-    handle(store, req, res).catch((error) => {
+    handleLibrary(req, res).catch((error) => {
       console.error(error)
-      sendJson(res, 500, { error: 'Čuvanje na disk nije uspelo.' })
+      sendJson(res, 500, { error: 'Čuvanje garaže nije uspelo.' })
     })
   }
 }
 
-async function handle(store, req, res) {
+function startReminders() {
+  if (remindersStarted) return
+  remindersStarted = true
+  const tick = () => {
+    runReminders().catch((error) => console.error(error))
+  }
+  setInterval(tick, 60 * 60 * 1000)
+  tick()
+}
+
+async function runReminders() {
+  const due = dueReminders()
+  for (const inquiry of due) {
+    await deliver({
+      to: adminEmail(),
+      subject: `Majstor ćuti: ${skillLabel(inquiry.skill)}`,
+      text: [
+        'Majstor nije odgovorio tri dana.',
+        '',
+        `Posao: ${skillLabel(inquiry.skill)}`,
+        `Garaža: ${inquiry.project_name || 'Garaža'}`,
+        `Majstor: ${inquiry.craftsman?.shop || ''} (${inquiry.craftsman?.email || ''})`,
+        `Kupac: ${inquiry.customer_name}, ${inquiry.customer_phone}, ${inquiry.customer_email}`,
+        '',
+        'Kupac sada može da povuče upit i izabere drugog majstora.',
+        `${publicUrl()}/admin`,
+      ].join('\n'),
+    })
+    markReminded(inquiry.id)
+  }
+}
+
+async function handleLibrary(req, res) {
+  const visitorKey = req.headers['x-visitor-key']
   if (req.method === 'GET') {
-    const library = await store.readLibrary()
-    sendJson(res, 200, { ...library, directory: store.projectsDir })
+    const library = readVisitorLibrary(visitorKey)
+    if (library.error) return sendJson(res, 400, library)
+    sendJson(res, 200, { ...library, directory: 'Sačuvano samo za ovaj pregledač.' })
     return
   }
   if (req.method !== 'PUT') {
     sendJson(res, 405, { error: 'Metoda nije podržana.' })
     return
   }
-  const text = await readBody(req)
-  let raw
-  try {
-    raw = JSON.parse(text)
-  } catch {
+  const raw = parseJson(await readBody(req))
+  if (!raw) {
     sendJson(res, 400, { error: 'Telo zahteva nije ispravan JSON.' })
     return
   }
-  const library = await store.writeLibrary(raw)
-  sendJson(res, 200, { ...library, directory: store.projectsDir })
+  const library = writeVisitorLibrary(visitorKey, raw)
+  if (library.error) return sendJson(res, 400, library)
+  sendJson(res, 200, { ...library, directory: 'Sačuvano samo za ovaj pregledač.' })
+}
+
+function serveView(root, url, res) {
+  const name = path.basename(decodeURIComponent(url.slice('/api/inquiry-views/'.length)))
+  if (!/^upit-[a-z0-9]+-\d+\.jpg$/.test(name)) {
+    sendJson(res, 404, { error: 'Nema prikaza.' })
+    return
+  }
+  fs.readFile(path.resolve(root, 'data/inquiries', name))
+    .then((buffer) => {
+      res.statusCode = 200
+      res.setHeader('Content-Type', 'image/jpeg')
+      res.end(buffer)
+    })
+    .catch(() => sendJson(res, 404, { error: 'Nema prikaza.' }))
 }
 
 function readBody(req) {
@@ -95,22 +283,12 @@ async function handleInquiry(root, req, res) {
     sendJson(res, 405, { error: 'Metoda nije podržana.' })
     return
   }
-  const text = await readBody(req)
-  let raw
-  try {
-    raw = JSON.parse(text)
-  } catch {
+  const raw = parseJson(await readBody(req))
+  if (!raw) {
     sendJson(res, 400, { error: 'Telo zahteva nije ispravan JSON.' })
     return
   }
-  const name = clean(raw.name, 80)
-  const phone = clean(raw.phone, 40)
-  const craftsmanId = clean(raw.craftsmanId, 80)
-  if (!name || !phone || !craftsmanId) {
-    sendJson(res, 400, { error: 'Ime, telefon i majstor su obavezni.' })
-    return
-  }
-  const id = `upit-${Date.now().toString(36)}`
+  const idPreview = `upit-${Date.now().toString(36)}`
   const directory = path.resolve(root, 'data/inquiries')
   await fs.mkdir(directory, { recursive: true })
   const views = []
@@ -118,30 +296,147 @@ async function handleInquiry(root, req, res) {
   for (let index = 0; index < incoming.length; index += 1) {
     const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/=\s]+)$/.exec(String(incoming[index] || ''))
     if (!match) continue
-    const fileName = `${id}-${index + 1}.jpg`
+    const fileName = `${idPreview}-${index + 1}.jpg`
     await fs.writeFile(path.join(directory, fileName), Buffer.from(match[1], 'base64'))
     views.push(fileName)
   }
-  const record = {
-    id,
-    createdAt: new Date().toISOString(),
-    craftsmanId,
-    skill: clean(raw.skill, 40),
-    name,
-    phone,
-    email: clean(raw.email, 80),
-    note: clean(raw.note, 1000),
-    projectName: clean(raw.projectName, 80),
-    estimate: raw.estimate ?? null,
-    scene: raw.scene ?? null,
-    views,
+  const result = createInquiry({ ...raw, views })
+  if (result.error) {
+    sendJson(res, 400, result)
+    return
   }
-  await fs.writeFile(path.join(directory, `${id}.json`), `${JSON.stringify(record, null, 2)}\n`)
-  sendJson(res, 200, { id })
+  const inquiry = getInquiry(result.id)
+  await notifyNewInquiry(inquiry, result.resumeToken).catch((error) => console.error(error))
+  sendJson(res, 200, { id: result.id, customerKey: result.customerKey, status: 'pending' })
 }
 
-function clean(value, max) {
-  return String(value ?? '').trim().slice(0, max)
+async function notifyNewInquiry(inquiry, resumeToken) {
+  if (!inquiry) return
+  const money = formatMoney(inquiry.orientation_total)
+  await deliver({
+    to: adminEmail(),
+    subject: `Novi upit: ${skillLabel(inquiry.skill)}`,
+    text: [
+      'Novi upit čeka odobrenje. Majstor ga još ne vidi.',
+      '',
+      `Kupac: ${inquiry.customer_name}`,
+      `Telefon: ${inquiry.customer_phone}`,
+      `Imejl: ${inquiry.customer_email}`,
+      `Posao: ${skillLabel(inquiry.skill)}`,
+      `Majstor: ${inquiry.craftsman?.shop || ''}, ${inquiry.craftsman?.city || ''} (${inquiry.craftsman?.email || ''})`,
+      `Garaža: ${inquiry.project_name || 'Garaža'}`,
+      `Orijentaciono: ${money}`,
+      inquiry.note ? `Poruka: ${inquiry.note}` : '',
+      '',
+      `Odobri ili odbij: ${publicUrl()}/admin`,
+    ].filter((line) => line !== '').join('\n'),
+  })
+  await deliver({
+    to: inquiry.customer_email,
+    subject: `Upit je primljen: ${skillLabel(inquiry.skill)}`,
+    text: [
+      `Zdravo ${inquiry.first_name || inquiry.customer_name},`,
+      '',
+      `Upit za posao „${skillLabel(inquiry.skill)}” je primljen i čeka odobrenje. Majstor ga još ne vidi.`,
+      '',
+      'Iste garaže možeš da nastaviš i na drugom uređaju:',
+      `${publicUrl()}/nastavi/${resumeToken}`,
+      '',
+      'Mera',
+    ].join('\n'),
+  })
+}
+
+async function notifyApproved(inquiry) {
+  if (!inquiry) return
+  await deliver({
+    to: inquiry.craftsman?.email,
+    subject: `Odobren upit: ${skillLabel(inquiry.skill)}`,
+    text: [
+      'Stigao je odobren upit.',
+      '',
+      `Posao: ${skillLabel(inquiry.skill)}`,
+      `Garaža: ${inquiry.project_name || 'Garaža'}`,
+      `Orijentaciona cena sa sajta: ${formatMoney(inquiry.orientation_total)}`,
+      inquiry.note ? `Poruka kupca: ${inquiry.note}` : '',
+      '',
+      'Otvori Radionicu, prihvati i unesi svoju cenu:',
+      `${publicUrl()}/radionica`,
+      '',
+      'Kupčev telefon dobijaš tek kad plati naknadu platforme.',
+    ].filter((line) => line !== '').join('\n'),
+  })
+  await deliver({
+    to: inquiry.customer_email,
+    subject: `Upit je poslat majstoru: ${skillLabel(inquiry.skill)}`,
+    text: [
+      `Zdravo ${inquiry.first_name || inquiry.customer_name},`,
+      '',
+      `Upit za „${skillLabel(inquiry.skill)}” je odobren i poslat majstoru ${inquiry.craftsman?.shop || ''}.`,
+      'Kad prihvati, uneće svoju cenu. Telefon se otvara kad se plati naknada od 10%.',
+      '',
+      'Mera',
+    ].join('\n'),
+  })
+}
+
+async function notifyRejected(inquiry) {
+  if (!inquiry?.customer_email) return
+  await deliver({
+    to: inquiry.customer_email,
+    subject: `Upit nije odobren: ${skillLabel(inquiry.skill)}`,
+    text: [
+      `Zdravo ${inquiry.first_name || inquiry.customer_name},`,
+      '',
+      `Upit za „${skillLabel(inquiry.skill)}” nije prosleđen majstoru.`,
+      '',
+      'Mera',
+    ].join('\n'),
+  })
+}
+
+async function deliver(message) {
+  if (!message.to) return null
+  const entry = await sendMail(message)
+  logMail(entry)
+  return entry
+}
+
+function formatMoney(value) {
+  return `${Math.round(Number(value) || 0).toLocaleString('sr-RS')} RSD`
+}
+
+function handleJson(req, res, done) {
+  readBody(req)
+    .then((text) => {
+      const raw = parseJson(text || '{}')
+      if (!raw) {
+        sendJson(res, 400, { error: 'Telo zahteva nije ispravan JSON.' })
+        return
+      }
+      Promise.resolve(done(raw)).catch((error) => {
+        console.error(error)
+        if (!res.writableEnded) sendJson(res, 500, { error: 'Zahtev nije sačuvan.' })
+      })
+    })
+    .catch((error) => {
+      console.error(error)
+      sendJson(res, 500, { error: 'Zahtev nije sačuvan.' })
+    })
+}
+
+function bearer(req) {
+  const header = req.headers.authorization || ''
+  const match = /^Bearer\s+(.+)$/i.exec(header)
+  return match ? match[1] : ''
+}
+
+function parseJson(text) {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
 }
 
 async function handlePrices(root, req, res) {
@@ -155,11 +450,8 @@ async function handlePrices(root, req, res) {
     sendJson(res, 405, { error: 'Metoda nije podržana.' })
     return
   }
-  const text = await readBody(req)
-  let raw
-  try {
-    raw = JSON.parse(text)
-  } catch {
+  const raw = parseJson(await readBody(req))
+  if (!raw) {
     sendJson(res, 400, { error: 'Telo zahteva nije ispravan JSON.' })
     return
   }
