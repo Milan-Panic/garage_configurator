@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 
 export const ROUTES = [
-  { path: '/', label: 'Home' },
-  { path: '/konfigurator', label: 'Garage Configurator' },
-  { path: '/majstori', label: 'Majstori' },
+  { path: '/', label: 'Početna', main: true },
+  { path: '/konfigurator', label: 'Konfigurator', main: true },
+  { path: '/majstori', label: 'Majstori', main: true },
   { path: '/radionica', label: 'Radionica' },
   { path: '/cene', label: 'Cene' },
   { path: '/admin', label: 'Admin' },

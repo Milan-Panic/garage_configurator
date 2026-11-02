@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+:root {
+  --page: #eeebe5;
+  --panel: #f8f6f2;
+  --ink: #17181a;
+  --accent: #f97316;
+  color-scheme: light;
+}
+
 html,
 body,
 #root {
@@ -8,7 +16,79 @@ body,
 }
 
 body {
-  background: #e7e2da;
-  color: #1c1917;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-family: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #fed7aa;
+}
+
+/* Klizač sa popunjenim delom do trenutne vrednosti (--fill postavlja komponenta). */
+.range {
+  height: 1.25rem;
+  cursor: pointer;
+  appearance: none;
+  background: transparent;
+}
+
+.range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--accent) var(--fill, 0%), #d6d3d1 var(--fill, 0%));
+}
+
+.range::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #d6d3d1;
+}
+
+.range::-moz-range-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.range::-webkit-slider-thumb {
+  appearance: none;
+  margin-top: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  transition: transform 0.12s;
+}
+
+.range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.range:focus-visible {
+  outline: none;
+}
+
+.range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgb(249 115 22 / 0.25);
+}
+
+details > summary {
+  list-style: none;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
 }

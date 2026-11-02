@@ -43,12 +43,28 @@ export function PedestrianDoor({ item, dimensions, selected, onSelect, onChange,
     >
       <mesh position={[0, 0, -0.05]} castShadow>
         <boxGeometry args={[item.width, item.height, 0.06]} />
-        <meshStandardMaterial color={selected ? '#d6d3cd' : '#f4f1ea'} roughness={0.55} metalness={0.08} />
+        <meshStandardMaterial color="#3a3f44" roughness={0.45} metalness={0.4} />
       </mesh>
-      <mesh position={[item.width / 2 - 0.08, 0.05, -0.09]}>
+      <mesh position={[0, -0.02, -0.07]} castShadow>
+        <boxGeometry args={[item.width - 0.12, item.height - 0.1, 0.03]} />
+        <meshStandardMaterial color="#f1eee8" roughness={0.55} metalness={0.08} />
+      </mesh>
+      {item.glass && (
+        <mesh position={[0, item.height * 0.18, -0.09]}>
+          <boxGeometry args={[item.width - 0.32, item.height * 0.42, 0.01]} />
+          <meshStandardMaterial color="#9ec9df" transparent opacity={0.6} roughness={0.05} metalness={0.15} />
+        </mesh>
+      )}
+      <mesh position={[item.width / 2 - 0.12, -0.02, -0.1]}>
         <boxGeometry args={[0.03, 0.16, 0.04]} />
         <meshStandardMaterial color="#1f2428" roughness={0.35} metalness={0.6} />
       </mesh>
+      {selected && (
+        <mesh position={[0, 0, -0.05]}>
+          <boxGeometry args={[item.width + 0.04, item.height + 0.04, 0.1]} />
+          <meshBasicMaterial color="#f97316" wireframe />
+        </mesh>
+      )}
     </group>
   )
 }

@@ -2,21 +2,21 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { ROOF_THICKNESS } from '../config'
 import { roofGeometry } from '../roof'
-import { patternMaterial } from './PatternMesh'
+import { ghostMaterial, patternMaterial } from './PatternMesh'
 
 const fascia = new THREE.MeshStandardMaterial({ color: '#2c3136', roughness: 0.45, metalness: 0.45 })
 const gutterMaterial = new THREE.MeshStandardMaterial({ color: '#9aa0a4', roughness: 0.35, metalness: 0.65 })
 
-export function Roof({ dimensions, roof, wallMaterial, roofMaterial, gutters = true }) {
+export function Roof({ dimensions, roof, wallMaterial, roofMaterial, gutters = true, ghost = false }) {
   const model = useMemo(() => roofGeometry(dimensions, roof), [dimensions, roof])
 
   return (
     <group>
       {model.planes.map((slab) => (
-        <RoofSlab key={slab.corners.map((corner) => `${corner.x}:${corner.z}`).join('|')} corners={slab.corners} spec={roofMaterial} />
+        <RoofSlab key={slab.corners.map((corner) => `${corner.x}:${corner.z}`).join('|')} corners={slab.corners} spec={roofMaterial} ghost={ghost} />
       ))}
       {model.caps.map((cap) => (
-        <WallCap key={cap.points.map((point) => `${point.x}:${point.y}:${point.z}`).join('|')} cap={cap} spec={wallMaterial} />
+        <WallCap key={cap.points.map((point) => `${point.x}:${point.y}:${point.z}`).join('|')} cap={cap} spec={wallMaterial} ghost={ghost} />
       ))}
       {model.planes.flatMap((slab) =>
         slab.drips.map((edge) => (
@@ -34,20 +34,20 @@ export function Roof({ dimensions, roof, wallMaterial, roofMaterial, gutters = t
   )
 }
 
-function RoofSlab({ corners, spec }) {
+function RoofSlab({ corners, spec, ghost }) {
   const key = JSON.stringify(corners)
   const geometry = useMemo(() => roofPrism(JSON.parse(key), ROOF_THICKNESS), [key])
   useEffect(() => () => geometry.dispose(), [geometry])
   const material = useMemo(() => {
-    const next = patternMaterial(spec).clone()
+    const next = (ghost ? ghostMaterial(spec) : patternMaterial(spec)).clone()
     next.side = THREE.DoubleSide
     return next
-  }, [spec])
+  }, [spec, ghost])
   useEffect(() => () => material.dispose(), [material])
-  return <mesh geometry={geometry} material={material} castShadow receiveShadow />
+  return <mesh geometry={geometry} material={material} castShadow={!ghost} receiveShadow />
 }
 
-function WallCap({ cap, spec }) {
+function WallCap({ cap, spec, ghost }) {
   const key = JSON.stringify(cap)
   const geometry = useMemo(() => {
     const parsed = JSON.parse(key)
@@ -55,12 +55,12 @@ function WallCap({ cap, spec }) {
   }, [key])
   useEffect(() => () => geometry.dispose(), [geometry])
   const material = useMemo(() => {
-    const next = patternMaterial(spec).clone()
+    const next = (ghost ? ghostMaterial(spec) : patternMaterial(spec)).clone()
     next.side = THREE.DoubleSide
     return next
-  }, [spec])
+  }, [spec, ghost])
   useEffect(() => () => material.dispose(), [material])
-  return <mesh geometry={geometry} material={material} castShadow receiveShadow />
+  return <mesh geometry={geometry} material={material} castShadow={!ghost} receiveShadow />
 }
 
 function GutterRun({ a, b }) {

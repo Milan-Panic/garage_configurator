@@ -3,8 +3,8 @@ export const SKILLS = [
   { id: 'krov', name: 'Krovni pokrivač' },
   { id: 'oluk', name: 'Oluk' },
   { id: 'temelj', name: 'Betonska ploča' },
-  { id: 'rolo', name: 'Rolo vrata' },
-  { id: 'stolarija', name: 'Prozori i krilna vrata' },
+  { id: 'rolo', name: 'Rolo i sekcijska vrata' },
+  { id: 'stolarija', name: 'Prozori, krilna i kipna vrata' },
 ]
 
 export function jobsFor(scene) {
@@ -30,26 +30,30 @@ export function jobsFor(scene) {
       send: true,
     })
   }
+  const finishedFloor = scene.floor && scene.floor !== 'beton'
   jobs.push({
     skill: 'temelj',
-    title: 'Betonska ploča',
-    detail: 'Ploča stoji u prikazu. Upit zidaru šalje se samo ako ga ovde uključiš.',
+    title: finishedFloor ? 'Betonska ploča i pod' : 'Betonska ploča',
+    detail: finishedFloor
+      ? 'Ploča i završni pod idu istom majstoru. Upit se šalje samo ako ga ovde uključiš.'
+      : 'Ploča stoji u prikazu. Upit zidaru šalje se samo ako ga ovde uključiš.',
     send: false,
   })
-  if (scene.door?.style === 'roller') {
+  const style = scene.door?.style
+  if (style === 'roller' || style === 'sectional') {
     jobs.push({
       skill: 'rolo',
-      title: 'Rolo vrata',
-      detail: 'Poseban upit majstoru koji ugrađuje rolo vrata. Cena ide po površini otvora.',
+      title: style === 'roller' ? 'Rolo vrata' : 'Sekcijska vrata',
+      detail: `Poseban upit monteru garažnih vrata. Cena ide po površini otvora${scene.door.motor ? ', motor je uključen' : ''}.`,
       send: true,
     })
   }
-  const swing = scene.door && scene.door.style !== 'none' && scene.door.style !== 'roller'
+  const swing = style === 'single' || style === 'double' || style === 'tilt'
   const joinery = (scene.windows || []).length > 0 || (scene.pedestrianDoors || []).length > 0 || swing
   if (joinery) {
     jobs.push({
       skill: 'stolarija',
-      title: 'Prozori i krilna vrata',
+      title: 'Prozori, krilna i kipna vrata',
       detail: 'Prozori i krila po površini, bočna pešačka vrata po komadu.',
       send: true,
     })

@@ -16,6 +16,23 @@ const painters = {
   wave: paintWave,
   sectional: paintSectional,
   roller: paintRoller,
+  'trapez-wood': paintTrapezWood,
+  'facade-panel': paintFacadePanel,
+  stucco: paintStucco,
+  stone: paintStone,
+  slats: paintSlats,
+  osb: paintOsb,
+  'standing-seam': paintStandingSeam,
+  sedum: paintSedum,
+  'sectional-ribbed': paintSectionalRibbed,
+  'sectional-wood': paintSectionalWood,
+  cassette: paintCassette,
+  chevron: paintChevron,
+  concrete: paintConcrete,
+  epoxy: paintEpoxy,
+  flake: paintFlake,
+  'floor-tiles': paintFloorTiles,
+  ceramic: paintCeramic,
 }
 
 export function createTileCanvas(spec) {
@@ -268,6 +285,320 @@ function paintRoller(ctx, w, h, spec) {
   gradient.addColorStop(1, rgb(shade(base, 0.5)))
   ctx.fillStyle = gradient
   ctx.fillRect(0, 0, w, h)
+}
+
+function paintTrapezWood(ctx, w, h, spec) {
+  paintWoodGrain(ctx, w, h, spec, true)
+  const shadow = ctx.createLinearGradient(0, 0, w, 0)
+  const stops = [
+    [0, 0.42],
+    [0.14, 0.18],
+    [0.32, 0],
+    [0.46, 0],
+    [0.58, 0.1],
+    [0.74, 0.32],
+    [0.88, 0.46],
+    [1, 0.42],
+  ]
+  for (const [offset, alpha] of stops) shadow.addColorStop(offset, `rgba(0,0,0,${alpha})`)
+  ctx.fillStyle = shadow
+  ctx.fillRect(0, 0, w, h)
+  ctx.fillStyle = 'rgba(255,255,255,0.1)'
+  ctx.fillRect(w * 0.36, 0, w * 0.08, h)
+}
+
+function paintWoodGrain(ctx, w, h, spec, vertical) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(base)
+  ctx.fillRect(0, 0, w, h)
+  const lines = 26
+  for (let index = 0; index < lines; index += 1) {
+    const offset = hash(index, 5) * (vertical ? w : h)
+    const tone = 0.72 + hash(index, 9) * 0.4
+    ctx.strokeStyle = rgb(shade(base, tone))
+    ctx.lineWidth = 1 + hash(index, 3) * 2
+    ctx.beginPath()
+    const span = vertical ? h : w
+    for (let step = 0; step <= span; step += 6) {
+      const sway = Math.sin(step / (18 + index) + index) * 2.5
+      if (vertical) ctx.lineTo(offset + sway, step)
+      else ctx.lineTo(step, offset + sway)
+    }
+    ctx.stroke()
+  }
+}
+
+function paintFacadePanel(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(base)
+  ctx.fillRect(0, 0, w, h)
+  for (let y = 0; y < h; y += 2) {
+    ctx.fillStyle = `rgba(255,255,255,${0.015 + hash(y, 4) * 0.02})`
+    ctx.fillRect(0, y, w, 1)
+  }
+  ctx.fillStyle = rgb(shade(base, 0.45))
+  ctx.fillRect(0, h - 4, w, 4)
+  ctx.fillStyle = rgb(shade(base, 1.25))
+  ctx.fillRect(0, h - 5, w, 1)
+}
+
+function paintStucco(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  const image = ctx.createImageData(w, h)
+  const data = image.data
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const noise = hash(x * 1.7, y * 2.3)
+      const factor = 0.93 + noise * 0.1
+      const color = shade(base, factor)
+      const index = (y * w + x) * 4
+      data[index] = color[0]
+      data[index + 1] = color[1]
+      data[index + 2] = color[2]
+      data[index + 3] = 255
+    }
+  }
+  ctx.putImageData(image, 0, 0)
+}
+
+function paintStone(ctx, w, h, spec) {
+  ctx.fillStyle = spec.mortar
+  ctx.fillRect(0, 0, w, h)
+  const base = hexToRgb(spec.color)
+  const rows = 4
+  const rowH = h / rows
+  for (let row = 0; row < rows; row += 1) {
+    let x = -hash(row, 1) * 30
+    let col = 0
+    while (x < w) {
+      const stoneW = 40 + hash(row, col) * 70
+      const tone = 0.78 + hash(col + 3, row + 11) * 0.4
+      ctx.fillStyle = rgb(shade(base, tone))
+      ctx.beginPath()
+      const top = row * rowH + 3 + hash(col, row + 2) * 4
+      const bottom = (row + 1) * rowH - 3 - hash(col + 1, row) * 4
+      ctx.moveTo(x + 4, top)
+      ctx.lineTo(x + stoneW - 4, top + hash(col, 7) * 5)
+      ctx.lineTo(x + stoneW - 2, bottom)
+      ctx.lineTo(x + 2, bottom - hash(col, 8) * 5)
+      ctx.closePath()
+      ctx.fill()
+      ctx.fillStyle = 'rgba(255,255,255,0.08)'
+      ctx.fillRect(x + 6, top + 2, stoneW * 0.5, 3)
+      x += stoneW
+      col += 1
+    }
+  }
+  // šav na ivicama tile-a da se ne vidi rez
+  ctx.fillStyle = spec.mortar
+  ctx.fillRect(0, 0, 3, h)
+}
+
+function paintSlats(ctx, w, h, spec) {
+  ctx.fillStyle = '#1d1b1a'
+  ctx.fillRect(0, 0, w, h)
+  const base = hexToRgb(spec.color)
+  const count = 6
+  const size = w / count
+  for (let index = 0; index < count; index += 1) {
+    const tone = 0.88 + hash(index, 2) * 0.2
+    const gradient = ctx.createLinearGradient(index * size, 0, index * size + size, 0)
+    gradient.addColorStop(0, rgb(shade(base, tone * 0.8)))
+    gradient.addColorStop(0.4, rgb(shade(base, tone * 1.08)))
+    gradient.addColorStop(1, rgb(shade(base, tone * 0.85)))
+    ctx.fillStyle = gradient
+    ctx.fillRect(index * size + 3, 0, size - 6, h)
+  }
+}
+
+function paintOsb(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(base)
+  ctx.fillRect(0, 0, w, h)
+  for (let index = 0; index < 900; index += 1) {
+    const x = hash(index, 1) * w
+    const y = hash(index, 2) * h
+    const length = 8 + hash(index, 3) * 26
+    const width = 3 + hash(index, 4) * 6
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(hash(index, 5) * Math.PI)
+    ctx.fillStyle = rgb(shade(base, 0.72 + hash(index, 6) * 0.5))
+    ctx.fillRect(-length / 2, -width / 2, length, width)
+    ctx.restore()
+  }
+  ctx.fillStyle = 'rgba(60,40,20,0.35)'
+  ctx.fillRect(0, 0, w, 2)
+  ctx.fillRect(0, 0, 2, h)
+}
+
+function paintStandingSeam(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  const gradient = ctx.createLinearGradient(0, 0, w, 0)
+  gradient.addColorStop(0, rgb(shade(base, 0.98)))
+  gradient.addColorStop(0.5, rgb(shade(base, 1.05)))
+  gradient.addColorStop(1, rgb(shade(base, 0.96)))
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, w, h)
+  ctx.fillStyle = rgb(shade(base, 0.5))
+  ctx.fillRect(w - 6, 0, 3, h)
+  ctx.fillStyle = rgb(shade(base, 1.4))
+  ctx.fillRect(w - 3, 0, 3, h)
+}
+
+function paintSedum(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(shade(base, 0.7))
+  ctx.fillRect(0, 0, w, h)
+  const tints = [
+    [0.9, 1, 0.8],
+    [1.15, 1.1, 0.7],
+    [1.2, 0.85, 0.75],
+    [0.8, 0.95, 0.9],
+  ]
+  for (let index = 0; index < 2400; index += 1) {
+    const x = hash(index, 11) * w
+    const y = hash(index, 12) * h
+    const tint = tints[Math.floor(hash(index, 13) * tints.length)]
+    const factor = 0.8 + hash(index, 14) * 0.5
+    ctx.fillStyle = rgb(base.map((channel, k) => Math.min(255, Math.round(channel * tint[k] * factor))))
+    ctx.beginPath()
+    ctx.arc(x, y, 1.5 + hash(index, 15) * 2.5, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+function paintSectionalRibbed(ctx, w, h, spec) {
+  paintSectional(ctx, w, h, spec)
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(shade(base, 0.7))
+  ctx.fillRect(0, h * 0.48, w, 2)
+  ctx.fillStyle = rgb(shade(base, 1.2))
+  ctx.fillRect(0, h * 0.48 + 2, w, 1)
+}
+
+function paintSectionalWood(ctx, w, h, spec) {
+  paintWoodGrain(ctx, w, h, spec, false)
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(shade(base, 0.45))
+  ctx.fillRect(0, h - 4, w, 4)
+  ctx.fillStyle = 'rgba(255,255,255,0.12)'
+  ctx.fillRect(0, 0, w, 3)
+}
+
+function paintCassette(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(base)
+  ctx.fillRect(0, 0, w, h)
+  const inset = Math.min(w, h) * 0.16
+  ctx.fillStyle = rgb(shade(base, 0.82))
+  ctx.fillRect(inset, inset, w - inset * 2, 3)
+  ctx.fillRect(inset, inset, 3, h - inset * 2)
+  ctx.fillStyle = rgb(shade(base, 1.08))
+  ctx.fillRect(inset, h - inset - 3, w - inset * 2, 3)
+  ctx.fillRect(w - inset - 3, inset, 3, h - inset * 2)
+  ctx.fillStyle = rgb(shade(base, 0.55))
+  ctx.fillRect(0, h - 4, w, 4)
+}
+
+function paintChevron(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = '#4a3422'
+  ctx.fillRect(0, 0, w, h)
+  const boards = 8
+  const step = h / boards
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(0, 0, w / 2, h)
+  ctx.clip()
+  for (let index = -boards; index < boards * 2; index += 1) {
+    ctx.fillStyle = rgb(shade(base, 0.82 + hash(index, 1) * 0.3))
+    ctx.beginPath()
+    ctx.moveTo(0, index * step)
+    ctx.lineTo(w / 2, index * step - w / 2)
+    ctx.lineTo(w / 2, index * step - w / 2 + step - 2)
+    ctx.lineTo(0, index * step + step - 2)
+    ctx.fill()
+  }
+  ctx.restore()
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(w / 2, 0, w / 2, h)
+  ctx.clip()
+  for (let index = -boards; index < boards * 2; index += 1) {
+    ctx.fillStyle = rgb(shade(base, 0.82 + hash(index, 2) * 0.3))
+    ctx.beginPath()
+    ctx.moveTo(w / 2, index * step - w / 2)
+    ctx.lineTo(w, index * step)
+    ctx.lineTo(w, index * step + step - 2)
+    ctx.lineTo(w / 2, index * step - w / 2 + step - 2)
+    ctx.fill()
+  }
+  ctx.restore()
+  ctx.fillStyle = '#3a291b'
+  ctx.fillRect(w / 2 - 1, 0, 2, h)
+}
+
+function paintConcrete(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  const image = ctx.createImageData(w, h)
+  const data = image.data
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const cloud = (wave(x, w, 2) + wave(y, h, 3)) * 0.02
+      const factor = 0.95 + hash(x, y) * 0.07 + cloud
+      const color = shade(base, factor)
+      const index = (y * w + x) * 4
+      data[index] = color[0]
+      data[index + 1] = color[1]
+      data[index + 2] = color[2]
+      data[index + 3] = 255
+    }
+  }
+  ctx.putImageData(image, 0, 0)
+}
+
+function paintEpoxy(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  const gradient = ctx.createLinearGradient(0, 0, w, h)
+  gradient.addColorStop(0, rgb(shade(base, 1.04)))
+  gradient.addColorStop(0.5, rgb(base))
+  gradient.addColorStop(1, rgb(shade(base, 0.97)))
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, w, h)
+}
+
+function paintFlake(ctx, w, h, spec) {
+  paintEpoxy(ctx, w, h, spec)
+  const palette = ['#e9e6df', '#2b2d30', '#9aa1a6', '#c7c1b5', '#555a5e']
+  for (let index = 0; index < 700; index += 1) {
+    ctx.fillStyle = palette[Math.floor(hash(index, 21) * palette.length)]
+    const size = 1.5 + hash(index, 22) * 2.5
+    ctx.fillRect(hash(index, 23) * w, hash(index, 24) * h, size, size * 0.7)
+  }
+}
+
+function paintFloorTiles(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(shade(base, 0.6))
+  ctx.fillRect(0, 0, w, h)
+  const half = w / 2
+  for (let row = 0; row < 2; row += 1) {
+    for (let col = 0; col < 2; col += 1) {
+      ctx.fillStyle = rgb(shade(base, (row + col) % 2 === 0 ? 1 : 1.12))
+      ctx.fillRect(col * half + 1, row * half + 1, half - 2, half - 2)
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'
+      for (let dot = 0; dot < 4; dot += 1) {
+        for (let k = 0; k < 4; k += 1) {
+          ctx.fillRect(col * half + half * (0.15 + dot * 0.23), row * half + half * (0.15 + k * 0.23), 4, 4)
+        }
+      }
+    }
+  }
+}
+
+function paintCeramic(ctx, w, h, spec) {
+  paintCourses(ctx, w, h, spec, 2, 2, false)
 }
 
 function grainFill(ctx, w, h, alpha) {

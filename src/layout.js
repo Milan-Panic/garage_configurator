@@ -1,10 +1,15 @@
 import { FLOOR_LEVEL, PANEL_THICKNESS } from './config'
 
 export const WINDOW_TYPES = [
-  { id: 'fixed', name: 'Fiksni', detail: 'Ne otvara se', addLabel: 'Dodaj fiksni prozor', width: 1, height: 1 },
-  { id: 'single', name: 'Jednokrilni', detail: 'Jedno krilo', addLabel: 'Dodaj jednokrilni prozor', width: 0.8, height: 1.1 },
-  { id: 'double', name: 'Dvokrilni', detail: 'Dva krila', addLabel: 'Dodaj dvokrilni prozor', width: 1.4, height: 1.15 },
+  { id: 'fixed', name: 'Fiksni', detail: 'Ne otvara se', addLabel: 'Dodaj fiksni prozor', width: 1, height: 1, sill: 0.95 },
+  { id: 'single', name: 'Jednokrilni', detail: 'Jedno krilo', addLabel: 'Dodaj jednokrilni prozor', width: 0.8, height: 1.1, sill: 0.95 },
+  { id: 'double', name: 'Dvokrilni', detail: 'Dva krila', addLabel: 'Dodaj dvokrilni prozor', width: 1.4, height: 1.15, sill: 0.95 },
+  { id: 'tilt', name: 'Ventus', detail: 'Kip, visoko', addLabel: 'Dodaj ventus prozor', width: 1.2, height: 0.5, sill: 1.75 },
+  { id: 'strip', name: 'Trakasti', detail: 'Svetlo ispod krova', addLabel: 'Dodaj trakasti prozor', width: 2.4, height: 0.4, sill: 1.9 },
+  { id: 'glassblock', name: 'Staklena prizma', detail: 'Zidana, ne otvara se', addLabel: 'Dodaj staklene prizme', width: 0.8, height: 0.8, sill: 1.2 },
 ]
+
+export const FURNITURE_GROUPS = ['Radni prostor', 'Odlaganje', 'Vozila i bašta', 'Kućna tehnika']
 
 export const FURNITURE_TYPES = [
   {
@@ -51,7 +56,159 @@ export const FURNITURE_TYPES = [
     depthRange: [0.35, 0.7],
     heightRange: [0.7, 1.05],
   },
+  {
+    id: 'locker',
+    name: 'Metalni ormar',
+    addLabel: 'Dodaj metalni ormar',
+    width: 0.9,
+    depth: 0.5,
+    height: 1.95,
+    widthRange: [0.6, 1.8],
+    depthRange: [0.4, 0.65],
+    heightRange: [1.6, 2.2],
+  },
+  {
+    id: 'toolchest',
+    name: 'Kolica za alat',
+    addLabel: 'Dodaj kolica za alat',
+    width: 0.7,
+    depth: 0.46,
+    height: 1,
+    widthRange: [0.5, 1.2],
+    depthRange: [0.38, 0.6],
+    heightRange: [0.8, 1.1],
+  },
+  {
+    id: 'pegboard',
+    name: 'Tabla za alat',
+    addLabel: 'Dodaj zidnu tablu za alat',
+    width: 1.6,
+    depth: 0.12,
+    height: 1.9,
+    widthRange: [0.6, 3],
+    depthRange: [0.08, 0.2],
+    heightRange: [1.4, 2.3],
+  },
+  {
+    id: 'tirerack',
+    name: 'Stalak za gume',
+    addLabel: 'Dodaj stalak za gume',
+    width: 1.1,
+    depth: 0.42,
+    height: 1.8,
+    widthRange: [0.7, 1.6],
+    depthRange: [0.35, 0.55],
+    heightRange: [1.2, 2.2],
+  },
+  {
+    id: 'bike',
+    name: 'Bicikl',
+    addLabel: 'Dodaj bicikl',
+    width: 0.6,
+    depth: 1.75,
+    height: 1.05,
+    widthRange: [0.5, 0.7],
+    depthRange: [1.5, 1.9],
+    heightRange: [0.9, 1.15],
+  },
+  {
+    id: 'motorbike',
+    name: 'Motor',
+    addLabel: 'Dodaj motor',
+    width: 0.8,
+    depth: 2.15,
+    height: 1.2,
+    widthRange: [0.65, 1],
+    depthRange: [1.8, 2.5],
+    heightRange: [1, 1.5],
+  },
+  {
+    id: 'mower',
+    name: 'Kosilica',
+    addLabel: 'Dodaj kosilicu',
+    width: 0.55,
+    depth: 1.45,
+    height: 1,
+    widthRange: [0.45, 1.2],
+    depthRange: [1.1, 2],
+    heightRange: [0.9, 1.2],
+  },
+  {
+    id: 'freezer',
+    name: 'Zamrzivač',
+    addLabel: 'Dodaj zamrzivač',
+    width: 1.1,
+    depth: 0.65,
+    height: 0.86,
+    widthRange: [0.6, 1.6],
+    depthRange: [0.55, 0.8],
+    heightRange: [0.8, 0.95],
+  },
+  {
+    id: 'sink',
+    name: 'Sudopera',
+    addLabel: 'Dodaj sudoperu',
+    width: 0.8,
+    depth: 0.55,
+    height: 0.9,
+    widthRange: [0.5, 1.4],
+    depthRange: [0.45, 0.65],
+    heightRange: [0.85, 0.95],
+  },
+  {
+    id: 'washer',
+    name: 'Veš mašina',
+    addLabel: 'Dodaj veš mašinu',
+    width: 0.6,
+    depth: 0.6,
+    height: 0.85,
+    widthRange: [0.6, 0.6],
+    depthRange: [0.45, 0.65],
+    heightRange: [0.85, 0.85],
+  },
+  {
+    id: 'firewood',
+    name: 'Drva',
+    addLabel: 'Dodaj složena drva',
+    width: 1.6,
+    depth: 0.4,
+    height: 1.1,
+    widthRange: [0.6, 3],
+    depthRange: [0.3, 0.6],
+    heightRange: [0.5, 1.8],
+  },
 ]
+
+const FURNITURE_GROUP_OF = {
+  workbench: 'Radni prostor',
+  toolchest: 'Radni prostor',
+  pegboard: 'Radni prostor',
+  sink: 'Radni prostor',
+  shelf: 'Odlaganje',
+  rack: 'Odlaganje',
+  cabinet: 'Odlaganje',
+  locker: 'Odlaganje',
+  tirerack: 'Odlaganje',
+  firewood: 'Odlaganje',
+  bike: 'Vozila i bašta',
+  motorbike: 'Vozila i bašta',
+  mower: 'Vozila i bašta',
+  freezer: 'Kućna tehnika',
+  washer: 'Kućna tehnika',
+}
+
+export function furnitureGroup(id) {
+  return FURNITURE_GROUP_OF[id] ?? 'Odlaganje'
+}
+
+export const CAR_PRESETS = [
+  { id: 'hatch', name: 'Gradski', length: 4, width: 1.75, height: 1.48 },
+  { id: 'sedan', name: 'Limuzina', length: 4.75, width: 1.83, height: 1.45 },
+  { id: 'suv', name: 'SUV', length: 4.65, width: 1.9, height: 1.7 },
+  { id: 'van', name: 'Kombi', length: 5.1, width: 2, height: 1.98 },
+]
+
+export const CAR_COLORS = ['#1d4e89', '#b91c1c', '#e7e5e4', '#18181b', '#71717a', '#166534', '#c2410c']
 
 export function wallFrame(id, { width, length, height }) {
   const thickness = PANEL_THICKNESS

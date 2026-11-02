@@ -5,12 +5,17 @@ import * as THREE from 'three'
 import { Garage } from './Garage'
 import { Ground } from './Ground'
 import { PedestrianDoor } from './PedestrianDoor'
+import { WindowModel } from './WindowUnit'
+import { FLOOR_LEVEL } from '../config'
+import { wallFrame } from '../layout'
+import { frameColor } from '../materials'
 
 export function GarageView({
   dimensions,
   wallMaterial,
   roofMaterial,
   doorMaterial,
+  floorMaterial,
   windows = [],
   door,
   roof,
@@ -20,6 +25,8 @@ export function GarageView({
   theta = 0.5,
   onShot,
   className = 'h-56 w-full',
+  autoRotate = false,
+  background = '#dbe4ec',
 }) {
   const { width, length, height } = dimensions
   return (
@@ -30,7 +37,7 @@ export function GarageView({
         camera={{ position: [5, 3.4, 14], fov: 40, near: 0.1, far: 200 }}
         gl={{ antialias: true, preserveDrawingBuffer: Boolean(onShot) }}
       >
-        <color attach="background" args={['#c9d6e4']} />
+        <color attach="background" args={[background]} />
         <hemisphereLight args={['#e7eef6', '#b7ad9c', 0.55]} />
         <ambientLight intensity={0.3} />
         <directionalLight position={[12, 18, 8]} intensity={1.4} />
@@ -43,6 +50,7 @@ export function GarageView({
           wallMaterial={wallMaterial}
           roofMaterial={roofMaterial}
           doorMaterial={doorMaterial}
+          floorMaterial={floorMaterial}
           windows={windows}
           door={door}
           roof={roof}
@@ -52,7 +60,12 @@ export function GarageView({
         {pedestrianDoors.map((item) => (
           <PedestrianDoor key={item.id} item={item} dimensions={dimensions} selected={false} onSelect={() => {}} onChange={() => {}} />
         ))}
-        {orbit && <OrbitControls enablePan={false} enableZoom={false} maxPolarAngle={Math.PI / 2.05} />}
+        {windows.map((item) => (
+          <StaticWindow key={item.id} item={item} dimensions={dimensions} />
+        ))}
+        {(orbit || autoRotate) && (
+          <OrbitControls enablePan={false} enableZoom={false} enableRotate={orbit} autoRotate={autoRotate} autoRotateSpeed={0.6} maxPolarAngle={Math.PI / 2.05} makeDefault />
+        )}
         {onShot && <Capture onShot={onShot} />}
       </Canvas>
     </div>
@@ -101,4 +114,24 @@ function Capture({ onShot }) {
     }
   }, [gl])
   return null
+}
+
+function StaticWindow({ item, dimensions }) {
+  const wall = wallFrame(item.wall, dimensions)
+  const basis = new THREE.Matrix4().makeBasis(
+    new THREE.Vector3(...wall.axis),
+    new THREE.Vector3(0, 1, 0),
+    new THREE.Vector3(...wall.normal),
+  )
+  const quaternion = new THREE.Quaternion().setFromRotationMatrix(basis)
+  const position = [
+    wall.origin[0] + wall.axis[0] * item.along,
+    FLOOR_LEVEL + item.sill + item.height / 2,
+    wall.origin[2] + wall.axis[2] * item.along,
+  ]
+  return (
+    <group position={position} quaternion={quaternion}>
+      <WindowModel type={item.type} width={item.width} height={item.height} color={frameColor(item.frame)} bars={item.bars} />
+    </group>
+  )
 }

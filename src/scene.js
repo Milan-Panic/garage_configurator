@@ -1,9 +1,9 @@
 import { DEFAULT_DIMENSIONS, clampDimension } from './config'
-import { DEFAULT_MATERIALS, resolveMaterials } from './materials'
-import { FURNITURE_TYPES, WINDOW_TYPES, WALL_IDS, clampCar, clampDoor, clampFurniture, clampPedestrian, clampWindow, defaultDoorSize } from './layout'
+import { DEFAULT_MATERIALS, DOOR_MATERIALS, FLOOR_FINISHES, FRAME_COLORS, INSULATION_OPTIONS, resolveMaterials } from './materials'
+import { CAR_COLORS, CAR_PRESETS, FURNITURE_TYPES, WINDOW_TYPES, WALL_IDS, clampCar, clampDoor, clampFurniture, clampPedestrian, clampWindow, defaultDoorSize } from './layout'
 import { initialRoof, normalizeRoof } from './roof'
 
-const DOOR_STYLES = ['none', 'single', 'double', 'roller']
+const DOOR_STYLES = ['none', 'sectional', 'tilt', 'single', 'double', 'roller']
 
 const sizedDoor = defaultDoorSize(DEFAULT_DIMENSIONS)
 
@@ -12,10 +12,15 @@ export const initialScene = {
   wallMaterialId: DEFAULT_MATERIALS.wall,
   roofMaterialId: DEFAULT_MATERIALS.roof,
   doorMaterialId: DEFAULT_MATERIALS.door,
+  wallColor: null,
+  roofColor: null,
+  doorColor: null,
   windows: [],
   furniture: [],
-  door: { style: 'single', wicket: false, open: 0.55, wall: 'front', along: 0, ...sizedDoor },
+  door: { style: 'sectional', wicket: false, open: 0.35, wall: 'front', along: 0, motor: false, ...sizedDoor },
   gutters: true,
+  floor: 'beton',
+  insulation: 'none',
   pedestrianDoors: [],
   roof: initialRoof,
   car: null,
@@ -52,6 +57,8 @@ export function normalizeScene(raw) {
         sill: item.sill,
         width: item.width,
         height: item.height,
+        frame: FRAME_COLORS.some((entry) => entry.id === item.frame) ? item.frame : 'bela',
+        bars: Boolean(item.bars),
       },
       dimensions,
     ),
@@ -83,9 +90,15 @@ export function normalizeScene(raw) {
       along: source.door?.along ?? 0,
       width: source.door?.width ?? fallback.width,
       height: source.door?.height ?? fallback.height,
+      motor: Boolean(source.door?.motor),
     },
     dimensions,
   )
+  // Materijal vrata mora da odgovara tipu (npr. rolo lamele samo na rolo vratima).
+  const doorSpec = DOOR_MATERIALS.find((entry) => entry.id === materials.doorMaterialId)
+  if (style !== 'none' && doorSpec && !doorSpec.styles.includes(style)) {
+    materials.doorMaterialId = DOOR_MATERIALS.find((entry) => entry.styles.includes(style))?.id ?? materials.doorMaterialId
+  }
   const roof = normalizeRoof(source.roof)
   const car =
     source.car && typeof source.car === 'object'
@@ -97,6 +110,8 @@ export function normalizeScene(raw) {
             x: source.car.x,
             z: source.car.z,
             rotation: source.car.rotation,
+            kind: CAR_PRESETS.some((entry) => entry.id === source.car.kind) ? source.car.kind : 'sedan',
+            color: CAR_COLORS.includes(source.car.color) ? source.car.color : CAR_COLORS[0],
           },
           dimensions,
         )
@@ -111,13 +126,26 @@ export function normalizeScene(raw) {
           along: item.along,
           width: item.width ?? 0.9,
           height: item.height ?? 2.05,
+          glass: Boolean(item.glass),
         },
         dimensions,
         door,
       ),
   )
 
-  return { dimensions, ...materials, windows, furniture, door, gutters: source.gutters !== false, pedestrianDoors, roof, car }
+  return {
+    dimensions,
+    ...materials,
+    windows,
+    furniture,
+    door,
+    gutters: source.gutters !== false,
+    floor: FLOOR_FINISHES.some((entry) => entry.id === source.floor) ? source.floor : 'beton',
+    insulation: INSULATION_OPTIONS.some((entry) => entry.id === source.insulation) ? source.insulation : 'none',
+    pedestrianDoors,
+    roof,
+    car,
+  }
 }
 
 function uniqueItems(items, prefix) {

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { GarageDrawings } from '../components/Drawings'
 import { GarageView } from '../components/GarageView'
 import { buildEstimate } from '../estimate'
-import { DOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, findMaterial } from '../materials'
+import { sceneMaterials } from '../materials'
 import { formatDin, mergePrices, orientationQuote } from '../prices'
 import { visitorKey } from '../visitor'
 import { jobsFor, skillName } from './craftsmen'
@@ -32,9 +32,7 @@ export function CraftsmenPage({ scene, projectName }) {
   const [sent, setSent] = useState([])
   const [pending, setPending] = useState(false)
   const quote = useMemo(() => orientationQuote(scene, estimate, prices), [scene, estimate, prices])
-  const wallMaterial = findMaterial(WALL_MATERIALS, scene.wallMaterialId)
-  const roofMaterial = findMaterial(ROOF_MATERIALS, scene.roofMaterialId)
-  const doorMaterial = findMaterial(DOOR_MATERIALS, scene.doorMaterialId)
+  const { wallMaterial, roofMaterial, doorMaterial, floorMaterial } = sceneMaterials(scene)
 
   useEffect(() => {
     fetch('/api/prices')
@@ -168,6 +166,7 @@ export function CraftsmenPage({ scene, projectName }) {
                   wallMaterial={wallMaterial}
                   roofMaterial={roofMaterial}
                   doorMaterial={doorMaterial}
+                  floorMaterial={floorMaterial}
                   windows={scene.windows}
                   door={scene.door}
                   roof={scene.roof}

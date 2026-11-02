@@ -22,17 +22,17 @@ export function Ground({ width, length, onClear }) {
         }}
       >
         <planeGeometry args={[yard, yard]} />
-        <meshStandardMaterial color="#c4bba8" roughness={1} metalness={0} />
+        <meshStandardMaterial color="#a9b293" roughness={1} metalness={0} />
       </mesh>
       <Grid
         position={[0, 0.004, 0]}
         args={[yard, yard]}
         cellSize={1}
         cellThickness={0.6}
-        cellColor="#b3aa98"
+        cellColor="#98a283"
         sectionSize={5}
         sectionThickness={1}
-        sectionColor="#9c9484"
+        sectionColor="#87916f"
         fadeDistance={yard * 0.7}
         fadeStrength={1.4}
         infiniteGrid={false}
@@ -51,7 +51,7 @@ export function Ground({ width, length, onClear }) {
         }}
       >
         <boxGeometry args={[padWidth, FLOOR_LEVEL, padLength]} />
-        <meshStandardMaterial color="#e3e0d9" roughness={0.9} metalness={0.02} />
+        <meshStandardMaterial color="#cfccc4" roughness={0.9} metalness={0.02} />
       </mesh>
     </group>
   )

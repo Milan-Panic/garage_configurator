@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ControlPanel } from './components/ControlPanel'
 import { GarageCanvas } from './components/GarageCanvas'
 import { SiteHeader } from './components/SiteHeader'
-import { usePath } from './nav'
+import { navigate, usePath } from './nav'
 import { HomePage } from './pages/HomePage'
 import { CraftsmenPage } from './pages/CraftsmenPage'
 import { PricesPage } from './pages/PricesPage'
@@ -10,9 +10,22 @@ import { WorkshopPage } from './pages/WorkshopPage'
 import { AdminPage } from './pages/AdminPage'
 import { adoptVisitorKey } from './visitor'
 import { clampDimension } from './config'
-import { DOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, findMaterial } from './materials'
+import { DOOR_MATERIALS, doorMaterialsFor, sceneMaterials } from './materials'
 import { useHistory } from './history'
-import { FURNITURE_TYPES, PEDESTRIAN_DEFAULT, WINDOW_TYPES, clampCar, clampDoor, clampFurniture, clampPedestrian, clampWindow, defaultDoorSize } from './layout'
+import { buildEstimate } from './estimate'
+import { mergePrices, orientationQuote, quoteTotal } from './prices'
+import {
+  CAR_PRESETS,
+  FURNITURE_TYPES,
+  PEDESTRIAN_DEFAULT,
+  WINDOW_TYPES,
+  clampCar,
+  clampDoor,
+  clampFurniture,
+  clampPedestrian,
+  clampWindow,
+  defaultDoorSize,
+} from './layout'
 import {
   createProjectId,
   isSceneDirty,
@@ -34,6 +47,20 @@ function adoptIds(scene) {
   nextId = Math.max(nextId, highestSerial(scene))
 }
 
+// Klizači šalju mnogo malih izmena; to je jedan korak u istoriji.
+const CONTINUOUS = new Set(['along', 'sill', 'width', 'height', 'depth', 'length', 'x', 'z', 'open', 'pitch'])
+
+function isContinuous(patch) {
+  const keys = Object.keys(patch)
+  return keys.length > 0 && keys.every((key) => CONTINUOUS.has(key))
+}
+
+function isTyping(target) {
+  if (!target) return false
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+}
+
 export default function App() {
   const [boot, setBoot] = useState(null)
   const [bootError, setBootError] = useState('')
@@ -49,7 +76,7 @@ export default function App() {
         setBoot({ library, scene, name: active?.name ?? '', directory })
       })
       .catch(() => {
-        if (!cancelled) setBootError('Projekti se ne mogu učitati sa diska.')
+        if (!cancelled) setBootError('Projekti se ne mogu učitati sa servera.')
       })
     return () => {
       cancelled = true
@@ -79,7 +106,7 @@ export default function App() {
 
 function Shell({ children }) {
   return (
-    <div className="flex h-dvh flex-col bg-[#ebe6de]">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[var(--page)]">
       <SiteHeader />
       <div className="min-h-0 flex-1">{children}</div>
     </div>
@@ -116,7 +143,10 @@ function ResumePage({ token }) {
 function StatusScreen({ message }) {
   return (
     <div className="flex h-full items-center justify-center px-6 text-center text-stone-600">
-      {message}
+      <span className="flex items-center gap-3">
+        <span className="size-2 animate-pulse rounded-full bg-orange-500" />
+        {message}
+      </span>
     </div>
   )
 }
@@ -128,22 +158,27 @@ function Configurator({ boot }) {
   const [projectName, setProjectName] = useState(boot.name)
   const [saveError, setSaveError] = useState('')
   const [saveNotice, setSaveNotice] = useState(null)
+  const [prices, setPrices] = useState(() => mergePrices(null))
   const saveSerial = useRef(0)
   const libraryRef = useRef(library)
   const sceneRef = useRef(scene)
   const nameRef = useRef(projectName)
+  const selectedRef = useRef(selected)
   libraryRef.current = library
   sceneRef.current = scene
   nameRef.current = projectName
-  const wallMaterial = findMaterial(WALL_MATERIALS, scene.wallMaterialId)
-  const roofMaterial = findMaterial(ROOF_MATERIALS, scene.roofMaterialId)
-  const doorMaterial = findMaterial(DOOR_MATERIALS, scene.doorMaterialId)
+  selectedRef.current = selected
+  const { wallMaterial, roofMaterial, doorMaterial, floorMaterial } = sceneMaterials(scene)
   const door = Number.isFinite(scene.door?.width)
     ? scene.door
     : clampDoor(
         { ...scene.door, ...defaultDoorSize(scene.dimensions), wall: scene.door?.wall ?? 'front' },
         scene.dimensions,
       )
+  const fullScene = useMemo(() => ({ ...scene, door }), [scene, door])
+  const estimate = useMemo(() => buildEstimate(fullScene), [fullScene])
+  const quote = useMemo(() => orientationQuote(fullScene, estimate, prices), [fullScene, estimate, prices])
+  const total = quoteTotal(quote)
   const path = usePath()
   const resumeMatch = /^\/nastavi\/([a-f0-9]{24,80})$/.exec(path)
   const activeProject = library.projects.find((project) => project.id === library.activeId) ?? null
@@ -154,21 +189,40 @@ function Configurator({ boot }) {
       : ''
 
   useEffect(() => {
+    fetch('/api/prices')
+      .then((response) => response.json())
+      .then((payload) => setPrices(mergePrices(payload.prices)))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
     function onKeyDown(event) {
-      if (!(event.ctrlKey || event.metaKey)) return
+      if (isTyping(event.target)) return
       const key = event.key.toLowerCase()
-      if (key === 'z') {
+      if (event.ctrlKey || event.metaKey) {
+        if (key === 'z') {
+          event.preventDefault()
+          if (event.shiftKey) redo()
+          else undo()
+        } else if (key === 'y') {
+          event.preventDefault()
+          redo()
+        } else if (key === 'd' && selectedRef.current) {
+          event.preventDefault()
+          duplicateItem(selectedRef.current)
+        }
+        return
+      }
+      if ((key === 'delete' || key === 'backspace') && selectedRef.current) {
         event.preventDefault()
-        if (event.shiftKey) redo()
-        else undo()
-      } else if (key === 'y') {
-        event.preventDefault()
-        redo()
+        removeItem(selectedRef.current)
+      } else if (key === 'escape') {
+        setSelected(null)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [undo, redo])
+  })
 
   useEffect(() => {
     if (!library.activeId) return undefined
@@ -206,7 +260,7 @@ function Configurator({ boot }) {
         return true
       })
       .catch(() => {
-        if (serial === saveSerial.current) setSaveError('Nije moguće sačuvati garažu na disk.')
+        if (serial === saveSerial.current) setSaveError('Nije moguće sačuvati garažu. Proveri vezu sa serverom.')
         return false
       })
   }
@@ -264,11 +318,34 @@ function Configurator({ boot }) {
     storeLibrary({ ...libraryRef.current, activeId: null })
   }
 
+  function startFrom(source) {
+    if (!libraryRef.current.activeId && isSceneDirty(null, nameRef.current, sceneRef.current)) {
+      if (!window.confirm('Trenutna garaža nije sačuvana. Da li da je zamenim ovim primerom?')) return
+    }
+    const nextScene = normalizeScene(source)
+    adoptIds(nextScene)
+    replace(nextScene)
+    setSelected(null)
+    setSaveNotice(null)
+    setProjectName('')
+    storeLibrary({ ...libraryRef.current, activeId: null })
+    navigate('/konfigurator')
+  }
+
   function deleteProject(id) {
     const current = libraryRef.current
     const projects = current.projects.filter((project) => project.id !== id)
     const activeId = current.activeId === id ? null : current.activeId
     storeLibrary({ activeId, projects })
+  }
+
+  function apply(patch, recipe) {
+    if (isContinuous(patch)) transient(recipe)
+    else commit(recipe)
+  }
+
+  function updateScene(patch) {
+    commit((current) => ({ ...current, ...patch }))
   }
 
   function updateDimension(key, value) {
@@ -297,9 +374,11 @@ function Configurator({ boot }) {
           type: spec.id,
           wall: 'back',
           along: onBack === 0 ? 0 : (onBack % 2 === 0 ? 1 : -1) * Math.ceil(onBack / 2) * 1.15,
-          sill: 0.95,
+          sill: spec.sill,
           width: spec.width,
           height: spec.height,
+          frame: 'bela',
+          bars: false,
         },
         current.dimensions,
       )
@@ -309,18 +388,36 @@ function Configurator({ boot }) {
   }
 
   function copyWindow(id) {
-    const nextId = createId('window')
+    const copyId = createId('window')
     commit((current) => {
       const source = current.windows.find((item) => item.id === id)
       if (!source) return current
-      const shifted = { ...clampWindow({ ...source, id: nextId, along: source.along + source.width + 0.12 }, current.dimensions), id: nextId }
+      const shifted = { ...clampWindow({ ...source, id: copyId, along: source.along + source.width + 0.12 }, current.dimensions), id: copyId }
       const item =
         Math.abs(shifted.along - source.along) > 0.05
           ? shifted
-          : { ...clampWindow({ ...source, id: nextId, along: source.along - source.width - 0.12 }, current.dimensions), id: nextId }
+          : { ...clampWindow({ ...source, id: copyId, along: source.along - source.width - 0.12 }, current.dimensions), id: copyId }
       return { ...current, windows: [...current.windows, item] }
     })
-    setSelected({ kind: 'window', id: nextId })
+    setSelected({ kind: 'window', id: copyId })
+  }
+
+  function copyFurniture(id) {
+    const copyId = createId('furniture')
+    commit((current) => {
+      const source = current.furniture.find((item) => item.id === id)
+      if (!source) return current
+      const step = Math.abs(Math.cos(source.rotation)) > 0.5 ? source.width + 0.1 : source.depth + 0.1
+      let item = { ...clampFurniture({ ...source, id: copyId, x: source.x + step }, current.dimensions), id: copyId }
+      if (Math.abs(item.x - source.x) < 0.05) item = { ...clampFurniture({ ...source, id: copyId, x: source.x - step }, current.dimensions), id: copyId }
+      return { ...current, furniture: [...current.furniture, item] }
+    })
+    setSelected({ kind: 'furniture', id: copyId })
+  }
+
+  function duplicateItem(target) {
+    if (target.kind === 'window') copyWindow(target.id)
+    else if (target.kind === 'furniture') copyFurniture(target.id)
   }
 
   function addPedestrian() {
@@ -334,6 +431,7 @@ function Configurator({ boot }) {
           along: count === 0 ? -1.2 : 1.2,
           width: PEDESTRIAN_DEFAULT.width,
           height: PEDESTRIAN_DEFAULT.height,
+          glass: false,
         },
         current.dimensions,
         current.door,
@@ -344,19 +442,12 @@ function Configurator({ boot }) {
   }
 
   function updatePedestrian(id, patch) {
-    const apply = (current) => ({
+    apply(patch, (current) => ({
       ...current,
       pedestrianDoors: (current.pedestrianDoors || []).map((item) =>
         item.id === id ? clampPedestrian({ ...item, ...patch }, current.dimensions, current.door) : item,
       ),
-    })
-    if (Object.prototype.hasOwnProperty.call(patch, 'along') || Object.prototype.hasOwnProperty.call(patch, 'width') || Object.prototype.hasOwnProperty.call(patch, 'height')) {
-      transient(apply)
-    } else commit(apply)
-  }
-
-  function updateGutters(gutters) {
-    commit((current) => ({ ...current, gutters }))
+    }))
   }
 
   function addFurniture(typeId) {
@@ -382,7 +473,7 @@ function Configurator({ boot }) {
   }
 
   function updateWindow(id, patch) {
-    transient((current) => ({
+    apply(patch, (current) => ({
       ...current,
       windows: current.windows.map((item) =>
         item.id === id ? clampWindow({ ...item, ...patch }, current.dimensions) : item,
@@ -391,7 +482,7 @@ function Configurator({ boot }) {
   }
 
   function updateFurniture(id, patch) {
-    transient((current) => ({
+    apply(patch, (current) => ({
       ...current,
       furniture: current.furniture.map((item) =>
         item.id === id ? clampFurniture({ ...item, ...patch }, current.dimensions) : item,
@@ -400,42 +491,43 @@ function Configurator({ boot }) {
   }
 
   function updateDoor(patch) {
-    const apply = (current) => {
+    apply(patch, (current) => {
       const base = Number.isFinite(current.door?.width)
         ? current.door
         : { ...current.door, ...defaultDoorSize(current.dimensions), wall: current.door?.wall ?? 'front' }
-      const door = clampDoor({ ...base, ...patch }, current.dimensions)
-      let doorMaterialId = current.doorMaterialId
-      if (patch.style === 'roller' && !String(doorMaterialId).startsWith('rolo')) {
-        doorMaterialId = String(doorMaterialId).includes('bela') ? 'rolo-bela' : 'rolo-antracit'
+      const next = clampDoor({ ...base, ...patch }, current.dimensions)
+      if (next.style !== 'single' && next.style !== 'double') next.wicket = false
+      let { doorMaterialId, doorColor } = current
+      const spec = DOOR_MATERIALS.find((entry) => entry.id === doorMaterialId)
+      if (next.style !== 'none' && spec && !spec.styles.includes(next.style)) {
+        const options = doorMaterialsFor(next.style)
+        const light = spec.color && parseInt(spec.color.slice(1, 3), 16) > 200
+        const match = options.find((entry) => light === parseInt(entry.color.slice(1, 3), 16) > 200) ?? options[0]
+        doorMaterialId = match.id
+        if (!match.tintable) doorColor = null
       }
-      if ((patch.style === 'single' || patch.style === 'double') && String(doorMaterialId).startsWith('rolo')) {
-        doorMaterialId = 'sekcijska-antracit'
-      }
-      return { ...current, door, doorMaterialId }
-    }
-    const sliding = ['open', 'along', 'width', 'height'].some((key) => Object.prototype.hasOwnProperty.call(patch, key))
-    if (sliding) transient(apply)
-    else commit(apply)
+      return { ...current, door: next, doorMaterialId, doorColor }
+    })
   }
 
   function updateRoof(patch) {
-    const apply = (current) => ({ ...current, roof: { ...current.roof, ...patch } })
-    if (Object.prototype.hasOwnProperty.call(patch, 'pitch')) transient(apply)
-    else commit(apply)
+    apply(patch, (current) => ({ ...current, roof: { ...current.roof, ...patch } }))
   }
 
-  function addCar() {
+  function addCar(presetId = 'sedan') {
+    const preset = CAR_PRESETS.find((entry) => entry.id === presetId) ?? CAR_PRESETS[1]
     commit((current) => ({
       ...current,
       car: clampCar(
         {
-          length: 4.4,
-          width: 1.8,
-          height: 1.5,
-          x: 0,
-          z: 0.2,
-          rotation: 0,
+          length: preset.length,
+          width: preset.width,
+          height: preset.height,
+          x: current.car?.x ?? 0,
+          z: current.car?.z ?? 0.2,
+          rotation: current.car?.rotation ?? 0,
+          kind: preset.id,
+          color: current.car?.color ?? '#1d4e89',
         },
         current.dimensions,
       ),
@@ -444,7 +536,7 @@ function Configurator({ boot }) {
   }
 
   function updateCar(patch) {
-    transient((current) => ({
+    apply(patch, (current) => ({
       ...current,
       car: current.car ? clampCar({ ...current.car, ...patch }, current.dimensions) : null,
     }))
@@ -471,98 +563,92 @@ function Configurator({ boot }) {
         ...current,
         pedestrianDoors: (current.pedestrianDoors || []).filter((item) => item.id !== target.id),
       }))
-    } else {
+    } else if (target.kind === 'car') {
       removeCar()
+      return
+    } else {
       return
     }
     setSelected((current) => (current?.id === target.id ? null : current))
   }
 
+  const pages = ['/konfigurator', '/majstori', '/cene', '/radionica', '/admin']
+
   return (
     <>
-      {path === '/majstori' && (
-        <CraftsmenPage scene={{ ...scene, door }} projectName={projectNameOrDefault(projectName)} />
-      )}
+      {path === '/majstori' && <CraftsmenPage scene={fullScene} projectName={projectNameOrDefault(projectName)} />}
       {path === '/cene' && <PricesPage />}
       {path === '/radionica' && <WorkshopPage />}
       {path === '/admin' && <AdminPage />}
       {resumeMatch && <ResumePage token={resumeMatch[1]} />}
-      {path !== '/konfigurator' && path !== '/majstori' && path !== '/cene' && path !== '/radionica' && path !== '/admin' && !resumeMatch && <HomePage />}
+      {!pages.includes(path) && !resumeMatch && <HomePage onStartFrom={startFrom} />}
       {path === '/konfigurator' && (
-    <div className="flex h-full flex-col bg-[#ebe6de] md:flex-row">
-      <ControlPanel
-        dimensions={scene.dimensions}
-        onDimensionChange={updateDimension}
-        wallMaterialId={wallMaterial.id}
-        roofMaterialId={roofMaterial.id}
-        doorMaterialId={doorMaterial.id}
-        onWallMaterialChange={(wallMaterialId) => commit((current) => ({ ...current, wallMaterialId }))}
-        onRoofMaterialChange={(roofMaterialId) => commit((current) => ({ ...current, roofMaterialId }))}
-        onDoorMaterialChange={(doorMaterialId) => commit((current) => ({ ...current, doorMaterialId }))}
-        windows={scene.windows}
-        furniture={scene.furniture}
-        door={door}
-        roof={scene.roof}
-        car={scene.car}
-        selected={selected}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        onUndo={undo}
-        onRedo={redo}
-        projectName={projectName}
-        projects={library.projects}
-        activeProjectId={library.activeId}
-        projectDirty={dirty}
-        saveError={saveError}
-        saveNotice={saveMessage}
-        storagePath={boot.directory}
-        onProjectNameChange={setProjectName}
-        onSaveProject={saveProject}
-        onNewProject={startNewProject}
-        onOpenProject={openProject}
-        onDeleteProject={deleteProject}
-        onSettle={endGesture}
-        onSelect={setSelected}
-        onAddWindow={addWindow}
-        onCopyWindow={copyWindow}
-        onAddFurniture={addFurniture}
-        onChangeWindow={updateWindow}
-        onChangeFurniture={updateFurniture}
-        onDoorChange={updateDoor}
-        onRoofChange={updateRoof}
-        gutters={scene.gutters !== false}
-        onGuttersChange={updateGutters}
-        pedestrianDoors={scene.pedestrianDoors || []}
-        onAddPedestrian={addPedestrian}
-        onChangePedestrian={updatePedestrian}
-        onAddCar={addCar}
-        onChangeCar={updateCar}
-        onRemoveCar={removeCar}
-        onRemove={removeItem}
-      />
-      <main className="relative min-h-0 flex-1">
-        <GarageCanvas
-          dimensions={scene.dimensions}
-          wallMaterial={wallMaterial}
-          roofMaterial={roofMaterial}
-          doorMaterial={doorMaterial}
-          windows={scene.windows}
-          furniture={scene.furniture}
-          door={door}
-          roof={scene.roof}
-          gutters={scene.gutters !== false}
-          pedestrianDoors={scene.pedestrianDoors || []}
-          car={scene.car}
-          selected={selected}
-          onSelect={setSelected}
-          onChangeWindow={updateWindow}
-          onChangePedestrian={updatePedestrian}
-          onChangeFurniture={updateFurniture}
-          onChangeCar={updateCar}
-          onGestureEnd={endGesture}
-        />
-      </main>
-    </div>
+        <div className="flex h-full flex-col md:flex-row">
+          <ControlPanel
+            scene={fullScene}
+            estimate={estimate}
+            quote={quote}
+            total={total}
+            onDimensionChange={updateDimension}
+            onSceneChange={updateScene}
+            selected={selected}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+            projectName={projectName}
+            projects={library.projects}
+            activeProjectId={library.activeId}
+            projectDirty={dirty}
+            saveError={saveError}
+            saveNotice={saveMessage}
+            onProjectNameChange={setProjectName}
+            onSaveProject={saveProject}
+            onNewProject={startNewProject}
+            onOpenProject={openProject}
+            onDeleteProject={deleteProject}
+            onSettle={endGesture}
+            onSelect={setSelected}
+            onAddWindow={addWindow}
+            onCopyWindow={copyWindow}
+            onCopyFurniture={copyFurniture}
+            onAddFurniture={addFurniture}
+            onChangeWindow={updateWindow}
+            onChangeFurniture={updateFurniture}
+            onDoorChange={updateDoor}
+            onRoofChange={updateRoof}
+            onAddPedestrian={addPedestrian}
+            onChangePedestrian={updatePedestrian}
+            onAddCar={addCar}
+            onChangeCar={updateCar}
+            onRemoveCar={removeCar}
+            onRemove={removeItem}
+          />
+          <main className="relative min-h-[48dvh] flex-1 md:min-h-0">
+            <GarageCanvas
+              dimensions={scene.dimensions}
+              wallMaterial={wallMaterial}
+              roofMaterial={roofMaterial}
+              doorMaterial={doorMaterial}
+              floorMaterial={floorMaterial}
+              windows={scene.windows}
+              furniture={scene.furniture}
+              door={door}
+              roof={scene.roof}
+              gutters={scene.gutters !== false}
+              pedestrianDoors={scene.pedestrianDoors || []}
+              car={scene.car}
+              selected={selected}
+              projectName={projectName}
+              onSelect={setSelected}
+              onChangeWindow={updateWindow}
+              onChangePedestrian={updatePedestrian}
+              onChangeFurniture={updateFurniture}
+              onChangeCar={updateCar}
+              onGestureEnd={endGesture}
+            />
+          </main>
+        </div>
       )}
     </>
   )

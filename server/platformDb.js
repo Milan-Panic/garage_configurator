@@ -17,8 +17,8 @@ const SKILL_LABEL = {
   krov: 'Krovni pokrivač',
   oluk: 'Oluk',
   temelj: 'Betonska ploča',
-  rolo: 'Rolo vrata',
-  stolarija: 'Prozori i krilna vrata',
+  rolo: 'Rolo i sekcijska vrata',
+  stolarija: 'Prozori, krilna i kipna vrata',
 }
 
 const SEED = [

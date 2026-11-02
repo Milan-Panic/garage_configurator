@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import * as THREE from 'three'
 import { FLOOR_LEVEL } from '../config'
 import { usePlaneDrag } from './drag'
@@ -29,11 +30,11 @@ export function Car({ item, selected, onSelect, onChange, onGestureEnd }) {
           startDrag(event, FLOOR_PLANE, { x: item.x, z: item.z })
         }}
       >
-        <CarModel length={item.length} width={item.width} height={item.height} />
+        <CarModel length={item.length} width={item.width} height={item.height} kind={item.kind} color={item.color} />
         {selected && (
           <mesh position={[0, 0.03, 0]}>
             <boxGeometry args={[item.width + 0.1, 0.02, item.length + 0.1]} />
-            <meshBasicMaterial color="#ea580c" wireframe />
+            <meshBasicMaterial color="#f97316" wireframe />
           </mesh>
         )}
       </group>
@@ -41,14 +42,23 @@ export function Car({ item, selected, onSelect, onChange, onGestureEnd }) {
   )
 }
 
-function CarModel({ length, width, height }) {
-  const wheelR = Math.min(0.36, Math.max(0.24, height * 0.22))
+const CABINS = {
+  hatch: { length: 0.55, offset: -0.1, top: 0.5 },
+  sedan: { length: 0.46, offset: -0.04, top: 0.46 },
+  suv: { length: 0.58, offset: -0.08, top: 0.5 },
+  van: { length: 0.8, offset: -0.06, top: 0.42 },
+}
+
+function CarModel({ length, width, height, kind = 'sedan', color = '#1d4e89' }) {
+  const shape = CABINS[kind] ?? CABINS.sedan
+  const roof = useMemo(() => new THREE.Color(color).multiplyScalar(0.82).getStyle(), [color])
+  const wheelR = Math.min(0.38, Math.max(0.24, height * 0.22))
   const wheelW = Math.min(0.22, width * 0.12)
-  const bodyTop = height * 0.46
+  const bodyTop = height * shape.top
   const bodyH = Math.max(0.3, bodyTop - wheelR * 0.35)
   const bodyY = wheelR * 0.55 + bodyH / 2
   const cabinH = Math.max(0.3, height - bodyTop + 0.06)
-  const cabinL = length * 0.46
+  const cabinL = length * shape.length
   const cabinW = width * 0.86
   const cabinY = bodyTop + cabinH / 2 - 0.06
   const trackX = width / 2 - wheelW / 2 - 0.02
@@ -64,13 +74,13 @@ function CarModel({ length, width, height }) {
     <group>
       <mesh position={[0, bodyY, 0]} castShadow receiveShadow>
         <boxGeometry args={[width * 0.96, bodyH, length]} />
-        <meshStandardMaterial color="#1d4e89" roughness={0.35} metalness={0.45} />
+        <meshStandardMaterial color={color} roughness={0.32} metalness={0.5} />
       </mesh>
-      <mesh position={[0, cabinY, -length * 0.04]} castShadow>
+      <mesh position={[0, cabinY, length * shape.offset]} castShadow>
         <boxGeometry args={[cabinW, cabinH, cabinL]} />
-        <meshStandardMaterial color="#163e6d" roughness={0.3} metalness={0.4} />
+        <meshStandardMaterial color={roof} roughness={0.3} metalness={0.4} />
       </mesh>
-      <mesh position={[0, cabinY + cabinH * 0.08, -length * 0.04]}>
+      <mesh position={[0, cabinY + cabinH * 0.08, length * shape.offset]}>
         <boxGeometry args={[cabinW * 0.92, cabinH * 0.55, cabinL * 0.92]} />
         <meshStandardMaterial color="#c5e4f5" transparent opacity={0.55} roughness={0.05} metalness={0.1} />
       </mesh>

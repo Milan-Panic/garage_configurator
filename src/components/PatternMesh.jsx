@@ -3,12 +3,13 @@ import * as THREE from 'three'
 import { createTileCanvas } from '../patterns'
 
 const materials = new Map()
+const ghosts = new Map()
 
-export function PatternMesh({ position, size, spec, u = 0, v = 0, rotation }) {
+export function PatternMesh({ position, size, spec, u = 0, v = 0, rotation, ghost = false, shadows = 'both' }) {
   const [width, height, depth] = size
   const geometry = useMemo(() => meterBox(width, height, depth, u, v), [width, height, depth, u, v])
   useEffect(() => () => geometry.dispose(), [geometry])
-  const material = useMemo(() => patternMaterial(spec), [spec])
+  const material = useMemo(() => (ghost ? ghostMaterial(spec) : patternMaterial(spec)), [spec, ghost])
 
   return (
     <mesh
@@ -16,7 +17,7 @@ export function PatternMesh({ position, size, spec, u = 0, v = 0, rotation }) {
       rotation={rotation}
       geometry={geometry}
       material={material}
-      castShadow
+      castShadow={!ghost && shadows === 'both'}
       receiveShadow
     />
   )
@@ -37,6 +38,19 @@ export function patternMaterial(spec) {
     metalness: spec.metalness,
   })
   materials.set(spec.id, material)
+  return material
+}
+
+// Providna varijanta za prikaz konstrukcije.
+export function ghostMaterial(spec) {
+  const cached = ghosts.get(spec.id)
+  if (cached) return cached
+  const material = patternMaterial(spec).clone()
+  material.transparent = true
+  material.opacity = 0.16
+  material.depthWrite = false
+  material.side = THREE.DoubleSide
+  ghosts.set(spec.id, material)
   return material
 }
 

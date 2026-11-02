@@ -1,5 +1,6 @@
 import { FLOOR_LEVEL, ROOF_OVERHANG } from './config'
 import { wallFrame } from './layout'
+import { FLOOR_FINISHES, FRAME_COLORS, ROOF_MATERIALS, WALL_MATERIALS, findMaterial } from './materials'
 import { roofGeometry, roofMetrics } from './roof'
 
 const POST_SPACING = 2
@@ -7,13 +8,14 @@ const RAFTER_SPACING = 1.2
 const PURLIN_SPACING = 0.9
 const SHEET_WASTE = 1.08
 const HINGE_LIMIT = 2
+const OSB_SHEET = 2.5 * 1.25
 
 export function hingeCount(leafHeight) {
   return leafHeight > HINGE_LIMIT ? 3 : 2
 }
 
 export function buildEstimate(scene) {
-  const { dimensions, roof, door, windows } = scene
+  const { dimensions, roof, door, windows = [] } = scene
   const geometry = roofGeometry(dimensions, roof)
   const metrics = roofMetrics(dimensions, roof)
   const lines = []
@@ -21,11 +23,11 @@ export function buildEstimate(scene) {
   const warnings = []
 
   const columns = columnLengths(dimensions, geometry, roof, door, scene.pedestrianDoors || [])
-  const profiles = profileSet(dimensions, metrics)
+  const profiles = profileSet(dimensions, metrics, scene.roofMaterialId)
   const section = profiles.post
   pushCuts(lines, 'Konstrukcija', `Stubovi, ${section.name}`, columns.heights, section.priceId)
   notes.push(
-    `Stubovi idu na uglove i na svakih najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m. U otvor vrata ne ide međustub. Presek je uobičajen za lake montažne garaže: do 4,5 m i 2,7 m visine stub 80×80×2, preko toga 80×80×3, preko 6,5 m ili 3,2 m visine 100×100×3. Rog prati dužinu kosine (60×40×2, pa 80×40×2, pa 80×40×3). Ovo nije statički proračun.`,
+    `Stubovi idu na uglove i na svakih najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m. U otvor vrata ne ide međustub. Presek je uobičajen za lake montažne garaže: do 4,5 m i 2,7 m visine stub 80×80×2, preko toga 80×80×3, preko 6,5 m ili 3,2 m visine 100×100×3. Težak pokrivač (crep, zeleni krov) diže presek za jednu klasu. Ovo nije statički proračun.`,
   )
 
   const plates = plateLengths(dimensions, metrics)
@@ -56,14 +58,16 @@ export function buildEstimate(scene) {
 
   const wallNet = pushWallCover(lines, notes, scene, geometry)
   pushRoofCover(lines, notes, warnings, scene, metrics)
+  pushInsulation(lines, notes, scene, wallNet, metrics)
   if (scene.gutters !== false) pushDrainage(lines, dimensions, metrics)
   pushFoundation(lines, dimensions)
+  pushFloor(lines, dimensions, scene.floor)
   pushDoor(lines, notes, warnings, dimensions, door)
   pushWindows(lines, windows)
   pushPedestrian(lines, scene.pedestrianDoors || [])
   pushFasteners(lines, wallNet + metrics.area, columns.heights.length)
 
-  notes.push('Betonska ploča, oluk i rolo vrata su posebni poslovi. Količine nisu statički proračun, a cene na strani Cene su orijentacione.')
+  notes.push('Betonska ploča, oluk i vrata su posebni poslovi. Količine nisu statički proračun, a cene na strani Cene su orijentacione.')
   const tagged = lines.map((entry) => ({ ...entry, skill: entry.skill || skillFor(entry) }))
   const segments = {}
   tagged.forEach((entry) => {
@@ -119,22 +123,25 @@ export function structurePosts(dimensions, roof, door, pedestrianDoors = []) {
   return columnLengths(dimensions, roofGeometry(dimensions, roof), roof, door, pedestrianDoors).posts
 }
 
-export function profileSet(dimensions, metrics) {
+export function profileSet(dimensions, metrics, roofMaterialId) {
   const span = dimensions.width
   const slope = Math.max(...metrics.slopes.map((item) => item.slopeLength))
+  // Težak pokrivač (crep, zeleni krov) podiže presek za jednu klasu.
+  const cover = findMaterial(ROOF_MATERIALS, roofMaterialId).cover
+  const load = cover?.kind === 'tile' || cover?.kind === 'green' ? 1.25 : 1
   const post =
-    span > 6.5 || dimensions.height > 3.2
+    span * load > 6.5 || dimensions.height > 3.2
       ? { name: 'kutija 100×100×3', priceId: 'post-100x100x3' }
-      : span > 4.5 || dimensions.height > 2.7
+      : span * load > 4.5 || dimensions.height > 2.7
         ? { name: 'kutija 80×80×3', priceId: 'post-80x80x3' }
         : { name: 'kutija 80×80×2', priceId: 'post-80x80x2' }
   const rafter =
-    slope > 6
+    slope * load > 6
       ? { name: 'kutija 80×40×3', priceId: 'box-80x40x3' }
-      : slope > 4.2
+      : slope * load > 4.2
         ? { name: 'kutija 80×40×2', priceId: 'box-80x40x2' }
         : { name: 'kutija 60×40×2', priceId: 'box-60x40x2' }
-  const purlin = slope > 6 ? { name: 'kutija 60×40×2', priceId: 'box-60x40x2' } : { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
+  const purlin = slope * load > 6 ? { name: 'kutija 60×40×2', priceId: 'box-60x40x2' } : { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
   const plate = span > 6.5 ? { name: 'kutija 80×40×2', priceId: 'box-80x40x2' } : { name: 'kutija 60×40×2', priceId: 'box-60x40x2' }
   const girt = { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
   return { post, rafter, purlin, plate, girt }
@@ -142,11 +149,7 @@ export function profileSet(dimensions, metrics) {
 
 function postInDoor(x, z, door, dimensions) {
   if (!door || door.style === 'none' || !Number.isFinite(door.width)) return false
-  const wall = wallFrame(door.wall || 'front', dimensions)
-  const along = (x - wall.origin[0]) * wall.axis[0] + (z - wall.origin[2]) * wall.axis[2]
-  const across = (x - wall.origin[0]) * wall.normal[0] + (z - wall.origin[2]) * wall.normal[2]
-  if (Math.abs(across) > 0.45) return false
-  return Math.abs(along - (door.along || 0)) < door.width / 2 + 0.08
+  return postInOpening(x, z, { ...door, wall: door.wall || 'front' }, dimensions)
 }
 
 function postInOpening(x, z, opening, dimensions) {
@@ -160,9 +163,8 @@ function postInOpening(x, z, opening, dimensions) {
 
 function skillFor(entry) {
   if (entry.section === 'Oluk') return 'oluk'
-  if (entry.section === 'Temelj') return 'temelj'
+  if (entry.section === 'Temelj' || entry.section === 'Pod') return 'temelj'
   if (entry.section === 'Krov') return 'krov'
-  if (entry.section === 'Vrata' && /rolo|lamela/i.test(`${entry.item} ${entry.detail}`)) return 'rolo'
   if (entry.section === 'Vrata' || entry.section === 'Stolarija') return 'stolarija'
   return 'konstrukcija'
 }
@@ -178,7 +180,7 @@ function plateLengths(dimensions, metrics) {
 }
 
 function pushWallCover(lines, notes, scene, geometry) {
-  const { dimensions, windows, door, wallMaterialId } = scene
+  const { dimensions, windows = [], door } = scene
   const areas = wallAreas(dimensions, geometry)
   if (door.style !== 'none' && areas[door.wall] != null) {
     areas[door.wall] = Math.max(0, areas[door.wall] - door.width * door.height)
@@ -189,60 +191,50 @@ function pushWallCover(lines, notes, scene, geometry) {
   const windowArea = windows.reduce((sum, item) => sum + item.width * item.height, 0)
   const gross = areas.left + areas.right + areas.back + areas.front
   const net = Math.max(0, gross - windowArea)
-  const cover = wallCover(wallMaterialId)
+  const material = findMaterial(WALL_MATERIALS, scene.wallMaterialId)
+  const cover = material.cover ?? { kind: 'sheet', width: 1.1, name: 'Zidna obloga' }
+  const colorNote = scene.wallColor ? `, RAL ${scene.wallColor}` : ''
   if (cover.kind === 'masonry') {
-    lines.push(line('Zidovi', cover.name, round1(net), 'm²', 'otvori su odbijeni', { priceId: 'masonry-m2' }))
-    notes.push('Zidani zid je u kvadratima. Cigla, malter i serklaži nisu razloženi.')
+    lines.push(line('Zidovi', `${cover.name}${colorNote}`, round1(net), 'm²', 'otvori su odbijeni', { priceId: material.priceId || 'masonry-m2' }))
+    notes.push('Zidani zid je u kvadratima. Blok, malter i serklaži nisu razloženi.')
     return net
   }
   if (cover.kind === 'boards') {
-    lines.push(line('Zidovi', 'Fasadna daska, sa 8% reza', round1(net * SHEET_WASTE), 'm²', '', { priceId: 'wall-m2' }))
+    lines.push(line('Zidovi', `${cover.name}${colorNote}, sa 8% reza`, round1(net * SHEET_WASTE), 'm²', '', { priceId: material.priceId || 'wood-m2' }))
+    lines.push(line('Zidovi', 'Podkonstrukcija, letva 50×30', Math.ceil(net / 0.5), 'm', 'letve na 50 cm'))
     return net
   }
   const tallest = Math.max(areas.heightLeft, areas.heightRight, areas.heightBack, areas.heightFront)
   const sheetLength = roundCut(tallest)
-  const withWaste = net * SHEET_WASTE
-  const sheets = Math.max(1, Math.ceil(withWaste / (cover.width * sheetLength)))
-  lines.push(line('Zidovi', cover.name, sheets, 'tabla', `korisna širina ${fmt(cover.width)} m, dužina ${fmt(sheetLength)} m`))
-  lines.push(line('Zidovi', 'Zidna obloga, neto', round1(net), 'm²', 'otvori su odbijeni', { priceId: 'wall-m2' }))
+  const sheets = Math.max(1, Math.ceil((net * SHEET_WASTE) / (cover.width * sheetLength)))
+  const trims = roundCut(tallest * 4 + (dimensions.width + dimensions.length) * 2)
+  lines.push(line('Zidovi', `${cover.name}${colorNote}`, sheets, 'tabla', `korisna širina ${fmt(cover.width)} m, dužina ${fmt(sheetLength)} m`))
+  lines.push(line('Zidovi', 'Zidna obloga, neto', round1(net), 'm²', 'otvori su odbijeni', { priceId: material.priceId || 'wall-m2' }))
+  lines.push(line('Zidovi', 'Ugaone lajsne i sokla', trims, 'm', 'uglovi i donja ivica zida', { priceId: 'flashing-m' }))
   return net
 }
 
 function wallAreas(dimensions, geometry) {
   const { width, length } = dimensions
   const heightAt = (x, z) => geometry.underside(x, z) - FLOOR_LEVEL
-  const side = (x, z0, z1) => {
+  const run = (point) => {
     const samples = 8
     let area = 0
     let peak = 0
     for (let index = 0; index < samples; index += 1) {
-      const zA = z0 + ((z1 - z0) * index) / samples
-      const zB = z0 + ((z1 - z0) * (index + 1)) / samples
-      const hA = heightAt(x, zA)
-      const hB = heightAt(x, zB)
-      area += ((hA + hB) / 2) * Math.abs(zB - zA)
+      const a = point(index / samples)
+      const b = point((index + 1) / samples)
+      const hA = heightAt(a.x, a.z)
+      const hB = heightAt(b.x, b.z)
+      area += ((hA + hB) / 2) * Math.hypot(b.x - a.x, b.z - a.z)
       peak = Math.max(peak, hA, hB)
     }
     return { area, peak }
   }
-  const end = (z, x0, x1) => {
-    const samples = 8
-    let area = 0
-    let peak = 0
-    for (let index = 0; index < samples; index += 1) {
-      const xA = x0 + ((x1 - x0) * index) / samples
-      const xB = x0 + ((x1 - x0) * (index + 1)) / samples
-      const hA = heightAt(xA, z)
-      const hB = heightAt(xB, z)
-      area += ((hA + hB) / 2) * Math.abs(xB - xA)
-      peak = Math.max(peak, hA, hB)
-    }
-    return { area, peak }
-  }
-  const left = side(-width / 2, -length / 2, length / 2)
-  const right = side(width / 2, -length / 2, length / 2)
-  const back = end(-length / 2, -width / 2, width / 2)
-  const front = end(length / 2, -width / 2, width / 2)
+  const left = run((t) => ({ x: -width / 2, z: -length / 2 + length * t }))
+  const right = run((t) => ({ x: width / 2, z: -length / 2 + length * t }))
+  const back = run((t) => ({ x: -width / 2 + width * t, z: -length / 2 }))
+  const front = run((t) => ({ x: -width / 2 + width * t, z: length / 2 }))
   return {
     left: left.area,
     right: right.area,
@@ -255,66 +247,87 @@ function wallAreas(dimensions, geometry) {
   }
 }
 
-function roofPriceId(id) {
-  if (id === 'glineni-crep' || id === 'betonski-crep' || id === 'bitumenska-sindra' || id === 'vlakno-cement' || String(id).includes('crep')) {
-    return 'tile-m2'
-  }
-  return 'sheet-m2'
-}
-
-function wallCover(id) {
-  if (id.startsWith('sendvic')) return { kind: 'panel', width: 1, name: 'Sendvič panel' }
-  if (id === 'trapez-t35-braon') return { kind: 'sheet', width: 1, name: 'Trapezni lim T35' }
-  if (id.startsWith('trapez')) return { kind: 'sheet', width: 1.1, name: 'Trapezni lim T18' }
-  if (id === 'fasadna-cigla') return { kind: 'masonry', name: 'Fasadna cigla' }
-  if (id === 'zaribani-malter') return { kind: 'masonry', name: 'Zidani zid, zaribani malter' }
-  if (id === 'betonski-blok') return { kind: 'masonry', name: 'Betonski blok 39×19' }
-  if (id === 'drvena-daska') return { kind: 'boards', name: 'Daska' }
-  return { kind: 'sheet', width: 1.1, name: 'Zidna obloga' }
-}
-
 function pushRoofCover(lines, notes, warnings, scene, metrics) {
-  const id = scene.roofMaterialId
+  const material = findMaterial(ROOF_MATERIALS, scene.roofMaterialId)
+  const cover = material.cover ?? { kind: 'sheet', useful: 1, name: material.name }
   const area = metrics.area
   const pitched = metrics.roof.kind !== 'flat'
-  if (id === 'glineni-crep' || id === 'betonski-crep') {
-    const each = id === 'glineni-crep' ? 15 : 10
-    lines.push(line('Krov', id === 'glineni-crep' ? 'Glineni crep' : 'Betonski crep', Math.ceil(area * each * 1.05), 'kom', `${fmt(area)} m² + 5% loma`))
-    lines.push(line('Krov', 'Površina pokrivača', round1(area), 'm²', '', { priceId: 'tile-m2' }))
-    if (id === 'glineni-crep' && metrics.roof.pitch < 22) warnings.push('Glineni crep traži nagib od bar 22°. Na manjem padu voda može da se vraća.')
-    if (id === 'betonski-crep' && metrics.roof.pitch < 15) warnings.push('Betonski crep traži nagib od bar 15°.')
-  } else if (id === 'bitumenska-sindra') {
-    lines.push(line('Krov', 'Bitumenska šindra', round1(area * 1.1), 'm²', 'uračunat preklop', { priceId: 'tile-m2' }))
-    if (pitched && metrics.roof.pitch < 12) warnings.push('Šindra na nagibu ispod 12° traži podlogu od dasaka ili OSB-a, ovde nije uračunata.')
-  } else if (id === 'bitumenska-traka') {
-    lines.push(line('Krov', 'Bitumenska traka', round1(area * 1.15), 'm²', 'dva sloja na preklopu', { priceId: 'sheet-m2' }))
+  const pitch = pitched ? metrics.roof.pitch : 0
+  const priceId = material.priceId || 'sheet-m2'
+  const colorNote = scene.roofColor ? `, RAL ${scene.roofColor}` : ''
+
+  if (cover.kind === 'tile') {
+    lines.push(line('Krov', cover.name, Math.ceil(area * cover.perM2 * 1.05), 'kom', `${fmt(area)} m² + 5% loma`))
+    lines.push(line('Krov', 'Površina pokrivača', round1(area), 'm²', '', { priceId }))
+    lines.push(line('Krov', 'Letve 50×30 i kontraletve', Math.ceil(area / 0.33 + area / 0.9), 'm', 'letve na oko 33 cm'))
+    lines.push(line('Krov', 'Paropropusna folija', round1(area * 1.1), 'm²', 'sa preklopom'))
+  } else if (cover.kind === 'shingle') {
+    lines.push(line('Krov', cover.name, round1(area * 1.1), 'm²', 'uračunat preklop', { priceId }))
+    lines.push(line('Krov', 'OSB podloga 18 mm', Math.ceil((area * 1.05) / OSB_SHEET), 'ploča', 'ploča 2,50 × 1,25 m'))
+    lines.push(line('Krov', 'Bitumenska podložna traka', round1(area * 1.1), 'm²', ''))
+  } else if (cover.kind === 'membrane') {
+    lines.push(line('Krov', cover.name, round1(area * (cover.waste ?? 1.15)), 'm²', cover.waste ? 'jedan komad, sa prepustom' : 'dva sloja na preklopu', { priceId }))
+    lines.push(line('Krov', 'OSB podloga 18 mm', Math.ceil((area * 1.05) / OSB_SHEET), 'ploča', 'ploča 2,50 × 1,25 m'))
+  } else if (cover.kind === 'green') {
+    lines.push(line('Krov', 'Hidroizolacija otporna na korenje', round1(area * 1.12), 'm²', 'EPDM ili TPO'))
+    lines.push(line('Krov', 'Drenažni i filterski sloj', round1(area), 'm²', ''))
+    lines.push(line('Krov', 'Supstrat 8 cm', Math.round(area * 0.08 * 100) / 100, 'm³', ''))
+    lines.push(line('Krov', cover.name, round1(area), 'm²', '', { priceId }))
+    lines.push(line('Krov', 'OSB podloga 22 mm', Math.ceil((area * 1.05) / OSB_SHEET), 'ploča', 'ploča 2,50 × 1,25 m'))
+    warnings.push('Natopljen zeleni krov teži 100–150 kg/m². Neka statičar proveri konstrukciju pre ponude.')
   } else {
-    const useful = id === 'krov-trapez-antracit' ? 1 : id === 'vlakno-cement' ? 1.05 : 1.1
-    const name =
-      id === 'krov-trapez-antracit'
-        ? 'Trapezni lim T35'
-        : id === 'vlakno-cement'
-          ? 'Vlaknasto-cementna ploča'
-          : id.startsWith('limeni-crep')
-            ? 'Limeni crep'
-            : 'Trapezni lim T18'
+    const useful = cover.useful ?? 1
     const longest = Math.max(...metrics.slopes.map((slope) => slope.slopeLength))
-    const sheetLength = roundCut(longest)
-    const sheets = metrics.slopes.reduce(
-      (sum, slope) => sum + Math.ceil(slope.alongCover / useful),
-      0,
-    )
-    lines.push(line('Krov', name, sheets, 'tabla', `korisna širina ${fmt(useful)} m, dužina ${fmt(sheetLength)} m`))
-    lines.push(line('Krov', 'Krovna površina', round1(area), 'm²', '', { priceId: roofPriceId(id) }))
-    if (!pitched && (id.startsWith('krov-trapez') || id.startsWith('limeni-crep') || id === 'vlakno-cement')) {
-      warnings.push('Ravan limeni krov zadržava vodu. Za lim uzmi bar jednu vodu i pad od 5°.')
+    let sheets
+    let detail
+    if (cover.fixedLength) {
+      const rows = metrics.slopes.map((slope) => Math.ceil(slope.slopeLength / (cover.fixedLength - 0.2)))
+      sheets = metrics.slopes.reduce((sum, slope, index) => sum + Math.ceil(slope.alongCover / useful) * rows[index], 0)
+      detail = `korisna širina ${fmt(useful)} m, preklop 20 cm`
+    } else {
+      sheets = metrics.slopes.reduce((sum, slope) => sum + Math.ceil(slope.alongCover / useful), 0)
+      detail = `korisna širina ${fmt(useful)} m, dužina ${fmt(roundCut(longest))} m`
     }
+    lines.push(line('Krov', `${cover.name}${colorNote}`, sheets, cover.unit || 'tabla', detail))
+    lines.push(line('Krov', 'Krovna površina', round1(area), 'm²', '', { priceId }))
+    if (cover.unit === 'traka') lines.push(line('Krov', 'Separaciona strukturna membrana', round1(area * 1.1), 'm²', 'ispod falca'))
+  }
+
+  if (!pitched && cover.kind !== 'membrane' && cover.kind !== 'green') {
+    warnings.push(`${material.name} na ravnom krovu zadržava vodu. Uzmi bar jednu vodu i pad od ${cover.minPitch ?? 5}°.`)
+  } else if (pitched && cover.minPitch && pitch < cover.minPitch) {
+    warnings.push(`${material.name} traži nagib od bar ${cover.minPitch}°. Na ${pitch}° voda može da se vraća ispod pokrivača.`)
+  }
+  if (cover.maxPitch && pitch > cover.maxPitch) {
+    warnings.push(`${material.name} ide najviše do ${cover.maxPitch}°. Smanji nagib ili uzmi drugi pokrivač.`)
+  }
+  if (cover.kind === 'membrane' && pitch > 20) {
+    notes.push('Membrana na kosom krovu radi, ali obično se bira lim ili šindra jer lepše izgleda.')
   }
   if (metrics.roof.kind === 'duo') {
     const ridge = (metrics.roof.ridge === 'length' ? scene.dimensions.length : scene.dimensions.width) + ROOF_OVERHANG * 2
     lines.push(line('Krov', 'Slemenska opšivka', roundCut(ridge), 'm', '', { priceId: 'ridge-m' }))
   }
   notes.push('Dužina table je kosina sa strehom, zaokružena na 5 cm naviše.')
+}
+
+function pushInsulation(lines, notes, scene, wallNet, metrics) {
+  const mode = scene.insulation || 'none'
+  if (mode === 'none') return
+  const wall = findMaterial(WALL_MATERIALS, scene.wallMaterialId)
+  const roof = findMaterial(ROOF_MATERIALS, scene.roofMaterialId)
+  const ceiling = (scene.dimensions.width * scene.dimensions.length) / (Math.cos(metrics.radians) || 1)
+  let area = 0
+  if (wall.insulated) notes.push(`${wall.name} je već izolovan, pa zidovi ne dobijaju vunu.`)
+  else area += wallNet
+  if (mode === 'full') {
+    if (roof.insulated) notes.push(`${roof.name} je već izolovan, pa krov ne dobija vunu.`)
+    else area += ceiling
+  }
+  if (area <= 0) return
+  lines.push(line('Izolacija', 'Mineralna vuna 10 cm', round1(area * 1.05), 'm²', mode === 'full' ? 'zidovi i krov' : 'zidovi', { priceId: 'wool-m2', skill: 'konstrukcija' }))
+  lines.push(line('Izolacija', 'Parna brana', round1(area * 1.1), 'm²', 'sa preklopom 10 cm', { skill: 'konstrukcija' }))
+  lines.push(line('Izolacija', 'OSB 12 mm, unutrašnja obloga', Math.ceil((area * 1.08) / OSB_SHEET), 'ploča', 'ploča 2,50 × 1,25 m', { priceId: 'osb-sheet', skill: 'konstrukcija' }))
 }
 
 function pushDrainage(lines, dimensions, metrics) {
@@ -341,10 +354,18 @@ function pushFoundation(lines, dimensions) {
   lines.push(line('Temelj', 'Armaturna mreža', rebar, 'kg', 'oko 8 kg/m², mreža Q188', { priceId: 'rebar-kg' }))
 }
 
+function pushFloor(lines, dimensions, floorId) {
+  const finish = findMaterial(FLOOR_FINISHES, floorId)
+  if (!finish.priceId) return
+  const area = round1(dimensions.width * dimensions.length)
+  lines.push(line('Pod', finish.name, area, 'm²', finish.detail, { priceId: finish.priceId }))
+}
+
 function pushPedestrian(lines, doors) {
   if (!doors.length) return
   const area = doors.reduce((sum, item) => sum + item.width * item.height, 0)
-  lines.push(line('Stolarija', 'Bočna pešačka vrata', doors.length, 'kom', `ukupno ${fmt(area)} m² otvora`))
+  const glazed = doors.filter((item) => item.glass).length
+  lines.push(line('Stolarija', 'Bočna pešačka vrata', doors.length, 'kom', `ukupno ${fmt(area)} m² otvora${glazed ? `, ${glazed} sa staklom` : ''}`))
 }
 
 function dripLengths(dimensions, metrics) {
@@ -367,17 +388,46 @@ function pushDoor(lines, notes, warnings, dimensions, door) {
     lines.push(line('Vrata', 'Otvor bez krila', 1, 'kom', 'štok ostaje u stubovima'))
     return
   }
-  const leafHeight = door.height
   const wallName = wallFrame(door.wall || 'front', dimensions).label.toLowerCase()
+  const size = `${fmt(door.width)} × ${fmt(door.height)} m`
+  const headroom = dimensions.height - door.height
+
   if (door.style === 'roller') {
-    lines.push(line('Vrata', 'Rolo kutija sa osovinom', 1, 'kom', `${wallName}, širina otvora ${fmt(door.width)} m`))
-    lines.push(line('Vrata', 'Vođice rolo vrata', 2, 'kom', `dužina ${fmt(door.height)} m`))
-    lines.push(line('Vrata', 'Rolo plašt', round1(door.width * door.height), 'm²', 'lamele pune visine otvora'))
-    lines.push(line('Vrata', 'Završna lamela', 1, 'kom', ''))
-    notes.push('Rolo je računat na ručni pogon. Motor, daljinac i opruga nisu na spisku.')
-    if (door.width > 5) warnings.push('Rolo šire od 5 m obično traži motor i jaču osovinu. To nije na spisku.')
+    const extra = { skill: 'rolo' }
+    lines.push(line('Vrata', 'Rolo kutija sa osovinom', 1, 'kom', `${wallName}, širina otvora ${fmt(door.width)} m`, extra))
+    lines.push(line('Vrata', 'Vođice rolo vrata', 2, 'kom', `dužina ${fmt(door.height)} m`, extra))
+    lines.push(line('Vrata', 'Rolo plašt', round1(door.width * door.height), 'm²', 'lamele pune visine otvora', extra))
+    lines.push(line('Vrata', 'Završna lamela sa gumom', 1, 'kom', '', extra))
+    if (door.motor) lines.push(line('Vrata', 'Cevni motor sa 2 daljinska', 1, 'kom', '', { ...extra, priceId: 'motor' }))
+    else notes.push('Rolo je računat na ručni pogon. Motor možeš da uključiš kod vrata.')
+    if (door.width > 5 && !door.motor) warnings.push('Rolo šire od 5 m obično traži motor i jaču osovinu. Uključi motor.')
+    if (headroom < 0.3) warnings.push('Rolo kutija traži oko 30 cm iznad otvora. Spusti vrata ili podigni zid.')
     return
   }
+
+  if (door.style === 'sectional') {
+    const extra = { skill: 'rolo' }
+    const panels = Math.max(4, Math.ceil(door.height / 0.5))
+    lines.push(line('Vrata', 'Sekcijska vrata, paneli 40 mm', 1, 'kompl', `${size}, ${panels} panela`, extra))
+    lines.push(line('Vrata', 'Vertikalne vođice i torziona opruga', 1, 'kompl', `${wallName}`, extra))
+    lines.push(line('Vrata', 'Horizontalne šine pod plafonom', 2, 'kom', `dužina oko ${fmt(roundCut(door.height + 0.5))} m`, extra))
+    if (door.motor) lines.push(line('Vrata', 'Motor na šini sa 2 daljinska', 1, 'kom', '', { ...extra, priceId: 'motor' }))
+    if (headroom < 0.2) warnings.push('Sekcijska vrata traže bar 20 cm iznad otvora za oprugu i šinu. Spusti vrata ili podigni zid.')
+    if (dimensions.length < door.height + 0.6) warnings.push('Šine sekcijskih vrata idu pod plafonom dublje od visine vrata. Garaža je prekratka.')
+    return
+  }
+
+  if (door.style === 'tilt') {
+    lines.push(line('Vrata', 'Kipna vrata, krilo sa okvirom', 1, 'kom', size))
+    lines.push(line('Vrata', 'Opružni mehanizam sa bočnim šinama', 2, 'kom', 'levo i desno'))
+    lines.push(line('Vrata', 'Brava sa kvakom', 1, 'kom', ''))
+    if (door.motor) lines.push(line('Vrata', 'Motor za kipna vrata sa 2 daljinska', 1, 'kom', '', { priceId: 'motor' }))
+    if (door.width > 3.2) warnings.push('Kipna vrata šira od 3,2 m su teška i retka. Sekcijska su bolji izbor.')
+    notes.push('Kipno krilo pri otvaranju ulazi u garažu oko 2/3 visine. Ne parkiraj auto do samih vrata.')
+    return
+  }
+
+  const leafHeight = door.height
   const leaves = door.style === 'double' ? 2 : 1
   const leafWidth = door.style === 'double' ? door.width / 2 - 0.012 : door.width
   const hinges = hingeCount(leafHeight)
@@ -385,7 +435,8 @@ function pushDoor(lines, notes, warnings, dimensions, door) {
   lines.push(line('Vrata', 'Šarke na krilu', leaves * hinges, 'kom', hinges === 3 ? 'krilo je više od 2 m, idu 3 šarke' : 'krilo do 2 m, idu 2 šarke'))
   lines.push(line('Vrata', 'Brava sa kvakom', 1, 'kom', ''))
   if (door.style === 'double') lines.push(line('Vrata', 'Podni i gornji zasun pasivnog krila', 1, 'kom', ''))
-  if (leafWidth > 1.25) notes.push('Krilo šire od 1,25 m je teško za svakodnevno otvaranje. Dvokrilna ili rolo vrata su mirnija.')
+  if (door.motor) lines.push(line('Vrata', 'Motor za krilna vrata, par ruku', 1, 'kom', 'sa 2 daljinska', { priceId: 'motor' }))
+  if (leafWidth > 1.25) notes.push('Krilo šire od 1,25 m je teško za svakodnevno otvaranje. Dvokrilna ili sekcijska vrata su mirnija.')
   if (!door.wicket) return
   const wicketWidth = Math.min(0.9, leafWidth - 0.28)
   const wicketHeight = Math.min(HINGE_LIMIT, leafHeight - 0.16)
@@ -396,14 +447,37 @@ function pushDoor(lines, notes, warnings, dimensions, door) {
   lines.push(line('Vrata', 'Brava pešačkih vrata', 1, 'kom', ''))
 }
 
+const WINDOW_NAMES = {
+  fixed: 'Fiksni prozor',
+  single: 'Jednokrilni prozor',
+  double: 'Dvokrilni prozor',
+  tilt: 'Ventus prozor',
+  strip: 'Trakasti prozor',
+  glassblock: 'Zid od staklenih prizmi',
+}
+
 function pushWindows(lines, windows) {
   if (windows.length === 0) return
-  const counts = new Map()
-  windows.forEach((item) => counts.set(item.type, (counts.get(item.type) ?? 0) + 1))
-  const names = { fixed: 'Fiksni prozor', single: 'Jednokrilni prozor', double: 'Dvokrilni prozor' }
-  counts.forEach((count, type) => {
-    lines.push(line('Stolarija', names[type] ?? 'Prozor', count, 'kom', 'okvir, staklo i dihtung u kompletu'))
+  const groups = new Map()
+  windows.forEach((item) => {
+    const key = `${item.type}|${item.frame || 'bela'}`
+    const group = groups.get(key) ?? { type: item.type, frame: item.frame || 'bela', count: 0, area: 0 }
+    group.count += 1
+    group.area += item.width * item.height
+    groups.set(key, group)
   })
+  groups.forEach((group) => {
+    const frame = FRAME_COLORS.find((entry) => entry.id === group.frame)?.name ?? 'PVC bela'
+    const detail = group.type === 'glassblock' ? `${fmt(group.area)} m², prizme 19×19 cm` : `${frame}, ${fmt(group.area)} m², okov i dihtung`
+    lines.push(line('Stolarija', WINDOW_NAMES[group.type] ?? 'Prozor', group.count, 'kom', detail))
+  })
+  const barred = windows.filter((item) => item.bars)
+  if (barred.length) {
+    const area = barred.reduce((sum, item) => sum + item.width * item.height, 0)
+    lines.push(line('Stolarija', 'Zaštitna rešetka', barred.length, 'kom', `${fmt(area)} m², kovano gvožđe`, { priceId: 'bars-m2', meters: area, priceUnit: 'm²' }))
+  }
+  const sills = windows.filter((item) => item.type !== 'glassblock').reduce((sum, item) => sum + item.width + 0.1, 0)
+  if (sills > 0) lines.push(line('Stolarija', 'Spoljna limena solbanka', roundCut(sills), 'm', ''))
 }
 
 function pushFasteners(lines, squareMeters, postCount) {
