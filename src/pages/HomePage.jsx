@@ -5,19 +5,20 @@ import {
   Calculator,
   CheckCircle2,
   FileText,
-  Hammer,
   MapPin,
   MousePointerClick,
+  PackagePlus,
   PenTool,
   Send,
   ShieldCheck,
-  Wrench,
+  Store,
 } from 'lucide-react'
 import { navigate } from '../nav'
 import { DOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, sceneMaterials } from '../materials'
 import { FURNITURE_TYPES, WINDOW_TYPES } from '../layout'
 import { buildEstimate } from '../estimate'
-import { formatDin, mergePrices, orientationQuote, quoteTotal } from '../prices'
+import { useOfferPartners } from '../partners'
+import { PACKAGES, formatDin, mergePrices, orientationQuote, packageName, quoteTotal } from '../prices'
 import { initialScene, normalizeScene } from '../scene'
 import { GarageView } from '../components/GarageView'
 import { LogoMark } from '../components/SiteHeader'
@@ -34,7 +35,7 @@ const exampleTotal = priceOf(initialScene)
 const HERO = normalizeScene({
   ...initialScene,
   dimensions: { width: 6, length: 7, height: 2.7 },
-  wallMaterialId: 'drvo-spaljeno',
+  wallMaterialId: 'fasadni-panel-grafit',
   roofMaterialId: 'falc-cink',
   doorMaterialId: 'sekcijska-glatka-crna',
   roof: { kind: 'mono', pitch: 8, fall: 'back', ridge: 'length' },
@@ -45,10 +46,12 @@ const HERO = normalizeScene({
 
 const SAMPLES = [
   {
-    name: 'Moderna za dva vozila',
+    name: 'Garaža za dva vozila',
+    type: 'Garaža',
     tag: 'Fasadni panel · falc',
     scene: normalizeScene({
       ...initialScene,
+      buildingType: 'garaza',
       dimensions: { width: 6.4, length: 6.5, height: 2.7 },
       wallMaterialId: 'fasadni-panel-grafit',
       wallColor: '7016',
@@ -60,59 +63,85 @@ const SAMPLES = [
     }),
   },
   {
-    name: 'Brvnara sa radionicom',
-    tag: 'Ariš · šindra · dvokrilna',
+    name: 'Ostava u dvorištu',
+    type: 'Ostava',
+    tag: 'Lim sa dekorom hrasta · limeni crep',
     scene: normalizeScene({
       ...initialScene,
-      dimensions: { width: 4.4, length: 6.5, height: 2.5 },
-      wallMaterialId: 'drvo-vertikalna',
-      roofMaterialId: 'bitumenska-sindra-crvena',
-      doorMaterialId: 'krilna-drvo-kosa',
-      roof: { kind: 'duo', pitch: 25, fall: 'back', ridge: 'length' },
-      door: { style: 'double', open: 0.3, wall: 'front', along: 0, width: 3, height: 2.1 },
-      windows: [{ id: 'window-1', type: 'double', wall: 'left', along: 1, sill: 0.95, width: 1.2, height: 1, frame: 'hrast' }],
-      pedestrianDoors: [{ id: 'pesacka-1', wall: 'left', along: -1.6, width: 0.9, height: 2.05 }],
+      buildingType: 'ostava',
+      dimensions: { width: 3, length: 4, height: 2.4 },
+      wallMaterialId: 'trapez-drvo-hrast',
+      roofMaterialId: 'limeni-crep-antracit',
+      doorMaterialId: 'krilna-lim',
+      roof: { kind: 'duo', pitch: 20, fall: 'back', ridge: 'length' },
+      door: { style: 'double', open: 0.3, wall: 'front', along: 0, width: 1.8, height: 2 },
+      windows: [{ id: 'window-1', type: 'tilt', wall: 'left', along: 0, sill: 1.6, width: 1, height: 0.5, frame: 'bela' }],
     }),
   },
   {
-    name: 'Zidana uz kuću',
-    tag: 'Cigla · glineni crep · kasete',
+    name: 'Radionica za mehaničara',
+    type: 'Radionica',
+    tag: 'Sendvič panel · rolo vrata',
     scene: normalizeScene({
       ...initialScene,
-      dimensions: { width: 4, length: 6, height: 2.5 },
-      wallMaterialId: 'fasadna-cigla',
-      roofMaterialId: 'glineni-crep',
-      doorMaterialId: 'sekcijska-kasete',
-      roof: { kind: 'duo', pitch: 28, fall: 'back', ridge: 'width' },
-      door: { style: 'sectional', open: 0, wall: 'front', along: 0, width: 2.7, height: 2.1 },
-      windows: [{ id: 'window-1', type: 'tilt', wall: 'left', along: 0, sill: 1.6, width: 1, height: 0.5, frame: 'bela', bars: true }],
+      buildingType: 'radionica',
+      dimensions: { width: 7, length: 9, height: 3.2 },
+      wallMaterialId: 'sendvic-antracit',
+      roofMaterialId: 'krovni-sendvic',
+      doorMaterialId: 'rolo-antracit',
+      insulation: 'full',
+      roof: { kind: 'mono', pitch: 6, fall: 'back', ridge: 'length' },
+      door: { style: 'roller', open: 0.5, wall: 'front', along: 0, width: 3.6, height: 2.7, motor: true },
+      pedestrianDoors: [{ id: 'pesacka-1', wall: 'right', along: 2, width: 0.9, height: 2.05 }],
+      windows: [{ id: 'window-1', type: 'strip', wall: 'left', along: 0, sill: 2, width: 3, height: 0.5, frame: 'antracit' }],
+      electric: { enabled: true, phase: 'three', sockets: 8, lights: 6, distance: 20, charger: 'charger' },
+    }),
+  },
+  {
+    name: 'Magacin za robu',
+    type: 'Magacin',
+    tag: 'Sinusni lim · sekcijska vrata',
+    scene: normalizeScene({
+      ...initialScene,
+      buildingType: 'magacin',
+      dimensions: { width: 8, length: 12, height: 3.5 },
+      wallMaterialId: 'sinus-lim',
+      roofMaterialId: 'krov-trapez-antracit',
+      doorMaterialId: 'sekcijska-rebro-srebro',
+      roof: { kind: 'duo', pitch: 12, fall: 'back', ridge: 'length' },
+      door: { style: 'sectional', open: 0.2, wall: 'front', along: 0, width: 4, height: 3 },
+      windows: [{ id: 'window-1', type: 'strip', wall: 'left', along: 0, sill: 2.4, width: 4, height: 0.5, frame: 'bela' }],
+      electric: { enabled: true, sockets: 4, lights: 8, distance: 25 },
     }),
   },
 ]
 
 const STEPS = [
-  { icon: PenTool, title: 'Složi garažu', text: 'Mere, krov, fasada, vrata i prozori. Prvi dolazak kreće od prazne garaže, a sačuvano ostaje u ovom pregledaču.' },
+  { icon: PenTool, title: 'Složi objekat', text: 'Garaža, ostava, radionica ili magacin. Mere, krov, fasada, vrata i dodaci, a sačuvano ostaje u ovom pregledaču.' },
   { icon: Calculator, title: 'Vidi računicu', text: 'Spisak profila, tabli i okova kakav pravi majstor, i orijentaciona cena po poslu — odmah, dok menjaš.' },
-  { icon: Send, title: 'Pošalji upit', text: 'Svaki posao ide posebno majstoru koji ima taj skil. Ime, imejl i telefon ostavljaš tek tada.' },
-  { icon: Hammer, title: 'Majstor zove', text: 'Upit prvo prolazi pregled. Majstor unese cenu, a kontakt se otvara kad se plati naknada od 10%.' },
-]
+  { icon: Store, title: 'Izaberi ponudu', text: 'Kad firme imaju cene, vidiš komplet ponudu za svoj objekat. Materijal za jedan paket ide od jedne firme.' },
+  { icon: Send, title: 'Pošalji upit', text: 'Svaki posao ide majstoru koji ima taj skil. Ime, imejl i telefon ostavljaš tek tada.' },
+  ]
 
 const FEATURES = [
-  { icon: Boxes, title: 'Pravi materijali', text: `${WALL_MATERIALS.length} obloga zidova, ${ROOF_MATERIALS.length} krovnih pokrivača, ${DOOR_MATERIALS.length} završnih obrada vrata i RAL boje.` },
-  { icon: FileText, title: 'Crteži sa kotama', text: 'Tlocrt i dve fasade sa merama otvora i stubova. Krilo više od 2 m nosi 3 šarke.' },
-  { icon: Wrench, title: 'Konstrukcija na uvid', text: 'Rendgen prikaz pokazuje stubove, vence i rogove iz računice. Vidiš šta plaćaš.' },
-  { icon: ShieldCheck, title: 'Majstor za taj deo', text: 'Oluk limaru, ploča zidaru, vrata monteru. Jedan majstor može da pokrije više poslova.' },
+  { icon: Boxes, title: 'Lim i paneli', text: `${WALL_MATERIALS.length} obloga zidova, ${ROOF_MATERIALS.length} krovnih pokrivača, ${DOOR_MATERIALS.length} završnih obrada vrata i RAL boje.` },
+  { icon: FileText, title: 'Crteži sa kotama', text: 'Tlocrt i dve fasade sa merama otvora i stubova, da majstor odmah vidi šta radi.' },
+    { icon: PackagePlus, title: 'Dodaci po izboru', text: 'Nadstrešnica, ventilacija, solarni paneli i struja ulaze u istu računicu.' },
+  { icon: ShieldCheck, title: 'Majstor za taj deo', text: 'Oluk limaru, ploča betonaru, vrata monteru. Jedan majstor može da pokrije više poslova.' },
 ]
 
 const QUESTIONS = [
   ['Da li je cena ponuda?', 'Ne. To je orijentacija iz materijala i mera. Ponuda je cena koju majstor unese kad prihvati upit.'],
   ['Da li treba nalog?', 'Ne. Crtež se pamti u pregledaču. Ime, prezime, imejl i telefon traže se tek na upitu.'],
   ['Kada majstor dobija moj broj?', 'Kad se plati naknada od 10% na cenu koju je uneo. Ostatak cene ide direktno njemu.'],
-  ['Ko vidi moje garaže?', 'Samo pregledač u kom su sačuvane. Link iz imejla otvara iste garaže na drugom uređaju.'],
-  ['Da li je ovo statički proračun?', 'Ne. Preseci profila su uobičajeni za lake montažne garaže. Za teške krovove i velike raspone treba statičar.'],
+  ['Da li je ponuda firme konačna?', 'Ne. Računa se iz cenovnika firme za tvoje količine. Firma potvrđuje konačnu cenu i dostavu kad dobije upit.'],
+  ['Ko vidi moje projekte?', 'Samo pregledač u kom su sačuvani. Link iz imejla otvara iste projekte na drugom uređaju.'],
+  ['Da li je ovo statički proračun?', 'Ne. Preseci profila su uobičajeni za lake montažne objekte. Za velike raspone treba statičar, a sajt upozorava kad mere pređu tu granicu.'],
+  ['Da li mi treba dozvola?', 'Zavisi od toga čemu objekat služi i gde stoji. Kratak pregled je u Vodiču za dozvole, a konačan odgovor daje opštinski urbanizam.'],
 ]
 
 export function HomePage({ onStartFrom }) {
+  const partners = useOfferPartners()
   const [cities, setCities] = useState(['Beograd', 'Zemun', 'Novi Sad', 'Pančevo', 'Subotica'])
   const heroPrice = useMemo(() => priceOf(HERO), [])
 
@@ -140,15 +169,15 @@ export function HomePage({ onStartFrom }) {
           <div>
             <p className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-orange-300 ring-1 ring-white/10">
               <span className="size-1.5 rounded-full bg-orange-400" />
-              Samostalno projektovanje garaža
+              Garaže, ostave, radionice i magacini
             </p>
             <h1 className="mt-5 max-w-xl text-4xl leading-[1.08] font-bold tracking-tight md:text-[3.4rem]">
-              Složi garažu sam.
+              Složi montažni objekat.
               <span className="block text-stone-400">Majstor dobija računicu i crtež.</span>
             </h1>
             <p className="mt-5 max-w-lg text-base leading-relaxed text-stone-300 md:text-lg">
-              Mera je mesto gde garažu složiš u 3D pre nego što zoveš majstora. Vidiš spisak materijala i orijentacionu
-              cenu dok menjaš, a upit ide samo majstorima koji rade taj deo posla.
+              Složi objekat u 3D pre nego što zoveš majstora. Vidiš spisak materijala i orijentacionu cenu dok menjaš, a
+              upit ide majstorima koji rade taj deo posla i firmama koje prodaju materijal.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <button
@@ -166,8 +195,27 @@ export function HomePage({ onStartFrom }) {
               >
                 Pogledaj majstore
               </button>
+              <button
+                type="button"
+                onClick={() => navigate('/dozvole')}
+                className="rounded-xl px-3 py-3 text-sm font-semibold text-stone-300 transition hover:text-white"
+              >
+                Treba li mi dozvola?
+              </button>
             </div>
-            <dl className="mt-10 grid max-w-md grid-cols-3 gap-4 border-t border-white/10 pt-6">
+            <div className="mt-6 flex flex-wrap gap-2">
+              {SAMPLES.map((sample) => (
+                <button
+                  key={sample.type}
+                  type="button"
+                  onClick={() => start(sample.scene)}
+                  className="rounded-full bg-white/5 px-3 py-1.5 text-sm text-stone-200 ring-1 ring-white/15 transition hover:bg-white/10"
+                >
+                  {sample.type}
+                </button>
+              ))}
+            </div>
+            <dl className="mt-8 grid max-w-md grid-cols-3 gap-4 border-t border-white/10 pt-6">
               <HeroStat value={`${WALL_MATERIALS.length + ROOF_MATERIALS.length + DOOR_MATERIALS.length}+`} label="materijala" />
               <HeroStat value={`${WINDOW_TYPES.length + FURNITURE_TYPES.length}`} label="prozora i predmeta" />
               <HeroStat value="0 RSD" label="za projektovanje" />
@@ -216,9 +264,9 @@ export function HomePage({ onStartFrom }) {
       <section className="bg-white py-16">
         <div className="mx-auto max-w-6xl px-6">
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <SectionHead eyebrow="Primeri" title="Napravljene garaže" text="Prevuci mišem preko modela da ga okreneš. Svaki primer možeš da otvoriš i doradiš." />
+            <SectionHead eyebrow="Primeri" title="Od ostave do magacina" text="Prevuci mišem preko modela da ga okreneš. Svaki primer možeš da otvoriš i doradiš." />
           </div>
-          <div className="mt-8 grid gap-5 lg:grid-cols-3">
+          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
             {SAMPLES.map((sample) => (
               <article key={sample.name} className="group overflow-hidden rounded-2xl bg-[var(--page)] ring-1 ring-stone-200 transition hover:shadow-lg">
                 <GarageView {...viewProps(sample.scene)} orbit className="h-60 w-full" />
@@ -263,14 +311,33 @@ export function HomePage({ onStartFrom }) {
         </ul>
       </section>
 
+      {partners.length > 0 && (
+        <section className="mx-auto max-w-6xl px-6 pb-16">
+          <SectionHead
+            eyebrow="Partneri"
+            title="Uporedi komplet ponude"
+            text="Firma daje cene za ceo paket, pa ne skupljaš lim i šrafove sa više strana. Ponuda se računa za tvoj objekat u delu Računica."
+          />
+          <ul className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {partners.map((partner) => (
+              <li key={partner.id} className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+                <p className="font-semibold text-stone-950">{partner.name}</p>
+                <p className="text-sm text-stone-600">{partner.city}{partner.sponsored ? ' · Sponzorisano' : ''}</p>
+                <p className="mt-2 text-xs text-stone-500">{partner.packages.map(packageName).join(' · ')}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="mx-auto max-w-6xl px-6 pb-16">
         <div className="grid gap-8 overflow-hidden rounded-3xl bg-[#17181a] p-8 text-white md:grid-cols-[1.2fr_1fr] md:p-10">
           <div>
             <p className="text-xs font-semibold tracking-wide text-orange-300 uppercase">Primer cene</p>
-            <h2 className="mt-2 text-2xl font-bold md:text-3xl">Standardna garaža 6 × 8 m</h2>
+            <h2 className="mt-2 text-2xl font-bold md:text-3xl">Polazni objekat 6 × 8 m</h2>
             <p className="mt-3 max-w-md text-sm leading-relaxed text-stone-400">
-              Podrazumevana garaža iz konfiguratora, sa olukom i sekcijskim vratima. To nije ponuda majstora, već zbir
-              po stavkama sa strane Cene.
+              Polazni model iz konfiguratora, sa olukom i sekcijskim vratima. To nije ponuda majstora, već zbir po
+              stavkama iz računice.
             </p>
             <p className="mt-6 text-4xl font-bold tabular-nums">{formatDin(exampleTotal)}</p>
           </div>
@@ -300,7 +367,7 @@ export function HomePage({ onStartFrom }) {
             ))}
           </ul>
           <div className="mt-8 rounded-2xl bg-orange-50 p-5 ring-1 ring-orange-200">
-            <h3 className="font-semibold text-stone-950">Radiš garaže, krovove ili vrata?</h3>
+            <h3 className="font-semibold text-stone-950">Radiš montažne objekte, krovove ili vrata?</h3>
             <p className="mt-1 text-sm leading-relaxed text-stone-700">
               Registruj radionicu i dobijaj upite sa gotovom računicom i crtežom. Plaćaš samo kad posao prihvatiš.
             </p>
@@ -310,6 +377,21 @@ export function HomePage({ onStartFrom }) {
               className="mt-4 flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white"
             >
               Otvori radionicu
+              <ArrowRight size={14} />
+            </button>
+          </div>
+          <div className="mt-4 rounded-2xl bg-white p-5 ring-1 ring-stone-200">
+            <h3 className="font-semibold text-stone-950">Prodaješ lim, panele, vrata ili elektro opremu?</h3>
+            <p className="mt-1 text-sm leading-relaxed text-stone-700">
+              Unesi cenovnik jednom. Kupci vide tvoju komplet ponudu za svoj objekat, a stižu ti upiti sa gotovim spiskom stavki.
+              U ponudi su paketi: {PACKAGES.map((pack) => pack.name).join(', ')}.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/partner')}
+              className="mt-4 flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Postani partner
               <ArrowRight size={14} />
             </button>
           </div>
@@ -334,7 +416,7 @@ export function HomePage({ onStartFrom }) {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-6 text-sm text-stone-500">
           <span className="flex items-center gap-2">
             <LogoMark size={24} />
-            <span className="font-semibold text-stone-900">Mera</span> · Složi garažu sam.
+            <span className="font-semibold text-stone-900">Mera</span> · Montažni objekti po meri.
           </span>
           <span>Cene su orijentacione. Količine nisu statički proračun.</span>
         </div>
@@ -376,6 +458,7 @@ function viewProps(scene) {
     roof: scene.roof,
     gutters: scene.gutters !== false,
     pedestrianDoors: scene.pedestrianDoors || [],
+    canopy: scene.canopy,
     theta: 0.6,
   }
 }

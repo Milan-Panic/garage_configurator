@@ -3,7 +3,8 @@ import { GarageDrawings } from '../components/Drawings'
 import { GarageView } from '../components/GarageView'
 import { buildEstimate } from '../estimate'
 import { sceneMaterials } from '../materials'
-import { formatDin, mergePrices, orientationQuote } from '../prices'
+import { applyOffers, packageOffers, useOfferPartners } from '../partners'
+import { formatDin, mergePrices, orientationQuote, packageName, quoteItems } from '../prices'
 import { visitorKey } from '../visitor'
 import { jobsFor, skillName } from './craftsmen'
 
@@ -20,6 +21,9 @@ export function CraftsmenPage({ scene, projectName }) {
   const [craftsmen, setCraftsmen] = useState([])
   const [customerKey, setCustomerKey] = useState(() => visitorKey())
   const [myInquiries, setMyInquiries] = useState([])
+  const [myLeads, setMyLeads] = useState([])
+  const partners = useOfferPartners()
+  const [skipped, setSkipped] = useState({})
   const [included, setIncluded] = useState(() => Object.fromEntries(jobs.map((job) => [job.skill, job.send])))
   const [chosen, setChosen] = useState({})
   const [shots, setShots] = useState({})
@@ -31,7 +35,17 @@ export function CraftsmenPage({ scene, projectName }) {
   const [error, setError] = useState('')
   const [sent, setSent] = useState([])
   const [pending, setPending] = useState(false)
-  const quote = useMemo(() => orientationQuote(scene, estimate, prices), [scene, estimate, prices])
+  const quote = useMemo(
+    () => orientationQuote(scene, estimate, applyOffers(prices, partners, scene.offers)),
+    [scene, estimate, prices, partners],
+  )
+  const offers = useMemo(() => {
+    const selected = scene.offers || {}
+    return packageOffers(partners, quoteItems(scene, estimate)).flatMap((entry) => {
+      const offer = entry.offers.find((item) => item.partner.id === selected[entry.pack.id])
+      return offer ? [{ pack: entry.pack, items: entry.items, offer }] : []
+    })
+  }, [partners, scene, estimate])
   const { wallMaterial, roofMaterial, doorMaterial, floorMaterial } = sceneMaterials(scene)
 
   useEffect(() => {
@@ -51,7 +65,11 @@ export function CraftsmenPage({ scene, projectName }) {
     async function load() {
       const response = await fetch('/api/customer/inquiries', { headers: { 'X-Customer-Key': customerKey } })
       const payload = await response.json()
-      if (!stop) setMyInquiries(payload.inquiries || [])
+      const leads = await fetch('/api/customer/leads', { headers: { 'X-Customer-Key': customerKey } }).then((result) => result.json())
+      if (!stop) {
+        setMyInquiries(payload.inquiries || [])
+        setMyLeads(leads.leads || [])
+      }
     }
     load().catch(() => {})
     const timer = setInterval(() => load().catch(() => {}), 4000)
@@ -88,8 +106,9 @@ export function CraftsmenPage({ scene, projectName }) {
       return
     }
     const selected = jobs.filter((job) => included[job.skill])
-    if (selected.length === 0) {
-      setError('Uključi bar jedan posao.')
+    const selectedOffers = offers.filter((entry) => !skipped[entry.pack.id])
+    if (selected.length === 0 && selectedOffers.length === 0) {
+      setError('Uključi bar jedan posao ili ponudu firme.')
       return
     }
     if (selected.some((job) => !chosen[job.skill])) {
@@ -129,6 +148,28 @@ export function CraftsmenPage({ scene, projectName }) {
         const craftsman = craftsmen.find((entry) => entry.id === chosen[job.skill])
         saved.push(`${skillName(job.skill)} → ${craftsman?.shop ?? payload.id}`)
       }
+      for (const entry of selectedOffers) {
+        const response = await fetch('/api/partner-leads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerKey: key,
+            partnerId: entry.offer.partner.id,
+            package: entry.pack.id,
+            firstName,
+            lastName,
+            phone,
+            email,
+            note,
+            projectName,
+            items: entry.items,
+          }),
+        })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload.error || 'Upit firmi nije sačuvan.')
+        key = payload.customerKey || key
+        saved.push(`${entry.pack.name} → ${entry.offer.partner.name} (kod ${payload.code})`)
+      }
       if (key) {
         localStorage.setItem('mera-customer-key', key)
         setCustomerKey(key)
@@ -152,8 +193,8 @@ export function CraftsmenPage({ scene, projectName }) {
           Kontakt se otvara tek kad se ta naknada plati, pa majstor zove kupca i dalje se dogovaraju sami.
         </p>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-700">
-          Oluk, betonska ploča, rolo vrata i metalna konstrukcija ne idu u isti upit. Majstor se nudi samo ako ima skil
-          za taj deo. Garaža {projectName ? `„${projectName}”` : 'iz konfiguratora'} ide uz računicu i tri pogleda.
+          Oluk, betonska ploča, rolo vrata, struja i metalna konstrukcija ne idu u isti upit. Majstor se nudi samo ako ima
+          skil za taj deo. Objekat {projectName ? `„${projectName}”` : 'iz konfiguratora'} ide uz računicu i tri pogleda.
         </p>
 
         <section className="mt-8">
@@ -172,6 +213,7 @@ export function CraftsmenPage({ scene, projectName }) {
                   roof={scene.roof}
                   gutters={scene.gutters !== false}
                   pedestrianDoors={scene.pedestrianDoors || []}
+                  canopy={scene.canopy}
                   theta={shot.theta}
                   onShot={(image) => setShots((current) => (current[shot.id] === image ? current : { ...current, [shot.id]: image }))}
                   className="h-52 w-full"
@@ -239,6 +281,25 @@ export function CraftsmenPage({ scene, projectName }) {
               </fieldset>
             )
           })}
+          {offers.map((entry) => (
+            <fieldset key={entry.pack.id} className="rounded-lg border border-orange-200 bg-orange-50/40 p-3">
+              <label className="flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={!skipped[entry.pack.id]}
+                  onChange={(event) => setSkipped((current) => ({ ...current, [entry.pack.id]: !event.target.checked }))}
+                />
+                <span>
+                  <span className="font-medium text-stone-950">Materijal: {entry.pack.name} · {entry.offer.partner.name}</span>
+                  <span className="mt-1 block text-stone-800">
+                    {formatDin(entry.offer.total)} po cenovniku firme, {entry.offer.covered} od {entry.offer.articles} artikala
+                  </span>
+                  <span className="mt-1 block text-stone-600">Firma potvrđuje konačnu cenu i dostavu kad dobije upit.</span>
+                </span>
+              </label>
+            </fieldset>
+          ))}
           <p className="text-sm text-stone-600">Nalog nije potreban. Ovi podaci idu uz upit.</p>
           <Field label="Ime" value={firstName} onChange={setFirstName} />
           <Field label="Prezime" value={lastName} onChange={setLastName} />
@@ -251,13 +312,26 @@ export function CraftsmenPage({ scene, projectName }) {
           {error && <p className="text-sm text-red-700">{error}</p>}
           {sent.length > 0 && (
             <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
-              Upiti čekaju odobrenje: {sent.join('; ')}. Majstor ih još ne vidi.
+              Upiti čekaju odobrenje: {sent.join('; ')}. Majstor i firma ih još ne vide.
             </p>
           )}
           <button type="submit" disabled={pending} className="rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white disabled:opacity-50">
-            {pending ? 'Šaljem…' : 'Pošalji poseban upit za svaki uključen posao'}
+            {pending ? 'Šaljem…' : 'Pošalji poseban upit za svaki uključen posao i ponudu'}
           </button>
         </form>
+        {myLeads.length > 0 && (
+          <section className="mt-8 space-y-3">
+            <h2 className="text-xl font-semibold text-stone-950">Tvoji upiti firmama</h2>
+            {myLeads.map((lead) => (
+              <article key={lead.id} className="rounded-xl border border-stone-300 bg-white p-4 text-sm">
+                <p className="font-medium text-stone-950">{packageName(lead.package)} · {lead.partner?.name}, {lead.partner?.city}</p>
+                <p className="mt-1 text-stone-600">Kod ponude {lead.code} · {formatDin(lead.offerTotal)} po cenovniku firme</p>
+                <p className="mt-1 text-stone-600">{leadLabel(lead.status)}</p>
+                {lead.partner?.phone && <p className="mt-1 text-stone-800">Telefon firme: {lead.partner.phone}</p>}
+              </article>
+            ))}
+          </section>
+        )}
         <InquiryBoard
           inquiries={myInquiries}
           onWithdraw={async (id) => {
@@ -347,6 +421,13 @@ function InquiryBoard({ inquiries, onPay, onWithdraw }) {
       <p className="text-xs text-stone-500">Kartice još nisu povezane. Dugme evidentira naknadu i otvara kontakt.</p>
     </section>
   )
+}
+
+function leadLabel(status) {
+  if (status === 'pending') return 'Čeka odobrenje. Firma još ne vidi upit.'
+  if (status === 'rejected') return 'Upit nije odobren.'
+  if (status === 'sold') return 'Firma je prijavila kupovinu.'
+  return 'Poslato firmi. Javiće ti se sa konačnom ponudom.'
 }
 
 function statusLabel(status) {

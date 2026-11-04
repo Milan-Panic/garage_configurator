@@ -200,7 +200,7 @@ function WorkshopInquiry({ item, onRespond }) {
   return (
     <article className="rounded-xl border border-stone-300 bg-white p-4 text-sm">
       <p className="font-medium text-stone-950">
-        {skillName(item.skill)} · {item.projectName || 'Garaža'}
+        {skillName(item.skill)} · {item.projectName || 'Objekat'}
       </p>
       <p className="mt-1 text-stone-600">{workshopStatus(item.status)}</p>
       {item.orientationTotal > 0 && <p className="mt-1 text-stone-600">Orijentacija sa sajta {formatDin(item.orientationTotal)}</p>}

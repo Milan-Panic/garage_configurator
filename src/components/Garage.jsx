@@ -4,6 +4,7 @@ import { FLOOR_LEVEL, PANEL_THICKNESS } from '../config'
 import { structurePosts } from '../estimate'
 import { wallFrame, wallPanels } from '../layout'
 import { roofGeometry } from '../roof'
+import { Canopy } from './Canopy'
 import { GarageDoor } from './GarageDoor'
 import { PatternMesh } from './PatternMesh'
 import { Roof } from './Roof'
@@ -24,6 +25,7 @@ export function Garage({
   roof,
   gutters = true,
   pedestrianDoors = [],
+  canopy = null,
   xray = false,
 }) {
   const dimensions = useMemo(() => ({ width, length, height }), [width, length, height])
@@ -51,6 +53,7 @@ export function Garage({
         />
       )}
       <Roof dimensions={dimensions} roof={roof} wallMaterial={wallMaterial} roofMaterial={roofMaterial} gutters={gutters} ghost={xray} />
+      {canopy?.enabled && <Canopy canopy={canopy} dimensions={dimensions} material={roofMaterial} />}
       {xray && <Structure dimensions={dimensions} roof={roof} door={door} pedestrianDoors={pedestrianDoors} />}
     </group>
   )

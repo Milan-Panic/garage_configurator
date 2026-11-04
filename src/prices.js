@@ -1,4 +1,28 @@
-export const DEFAULT_PRICES = [
+// Paketi su celine koje jedna firma nudi komplet, da kupac ne skuplja lim i šrafove sa više strana.
+export const PACKAGES = [
+  { id: 'konstrukcija', name: 'Konstrukcija', detail: 'Profili, ankeri i spojni materijal' },
+  { id: 'omotac', name: 'Omotač', detail: 'Zidni lim i paneli, krov, opšivke, oluk, izolacija' },
+  { id: 'otvori', name: 'Vrata i prozori', detail: 'Rolo, sekcijska i krilna vrata, stolarija' },
+  { id: 'podloga', name: 'Ploča i pod', detail: 'Materijal za betonsku ploču i završni pod' },
+  { id: 'struja', name: 'Struja', detail: 'Tabla, kablovi, rasveta, punjač, solarni paneli' },
+  { id: 'oprema', name: 'Dodaci', detail: 'Nadstrešnica i ventilacija' },
+]
+
+const GROUP_PACKAGE = {
+  'Metalna konstrukcija': 'konstrukcija',
+  'Zidna obloga': 'omotac',
+  Izolacija: 'omotac',
+  Krov: 'omotac',
+  Oluk: 'omotac',
+  'Betonska ploča i pod': 'podloga',
+  'Rolo i sekcijska vrata': 'otvori',
+  Stolarija: 'otvori',
+  Struja: 'struja',
+  'Punjač i solar': 'struja',
+  Dodaci: 'oprema',
+}
+
+const CATALOG = [
   { id: 'post-80x80x2', group: 'Metalna konstrukcija', name: 'Kutija 80×80×2', unit: 'm', price: 980 },
   { id: 'post-80x80x3', group: 'Metalna konstrukcija', name: 'Kutija 80×80×3', unit: 'm', price: 1350 },
   { id: 'post-100x100x3', group: 'Metalna konstrukcija', name: 'Kutija 100×100×3', unit: 'm', price: 1750 },
@@ -8,20 +32,25 @@ export const DEFAULT_PRICES = [
   { id: 'box-40x40x2', group: 'Metalna konstrukcija', name: 'Kutija 40×40×2', unit: 'm', price: 480 },
   { id: 'screw', group: 'Metalna konstrukcija', name: 'Samorez 4,8×35', unit: 'kom', price: 4 },
   { id: 'anchor', group: 'Metalna konstrukcija', name: 'Anker za stub', unit: 'kom', price: 85 },
-  { id: 'wall-m2', group: 'Zidna obloga', name: 'Lim (trapez, sinus)', unit: 'm²', price: 1650 },
-  { id: 'panel-m2', group: 'Zidna obloga', name: 'Sendvič i fasadni panel', unit: 'm²', price: 3400 },
-  { id: 'wood-m2', group: 'Zidna obloga', name: 'Drvo, WPC ili OSB', unit: 'm²', price: 2400 },
-  { id: 'masonry-m2', group: 'Zidna obloga', name: 'Zidana obloga', unit: 'm²', price: 4200 },
-  { id: 'stone-m2', group: 'Zidna obloga', name: 'Zid sa kamenom oblogom', unit: 'm²', price: 6800 },
+  { id: 'trapez-t18-m2', group: 'Zidna obloga', name: 'Trapezni lim T18', unit: 'm²', price: 1650 },
+  { id: 'trapez-t35-m2', group: 'Zidna obloga', name: 'Trapezni lim T35', unit: 'm²', price: 1650 },
+  { id: 'trapez-dekor-m2', group: 'Zidna obloga', name: 'Trapezni lim, dekor drvo', unit: 'm²', price: 1650 },
+  { id: 'sinus-m2', group: 'Zidna obloga', name: 'Sinusni lim', unit: 'm²', price: 1650 },
+  { id: 'panel-m2', group: 'Zidna obloga', name: 'Sendvič panel 60 mm', unit: 'm²', price: 3400 },
+  { id: 'fasadni-panel-m2', group: 'Zidna obloga', name: 'Fasadni panel 80 mm', unit: 'm²', price: 3400 },
+  { id: 'wpc-m2', group: 'Zidna obloga', name: 'WPC fasadne letvice', unit: 'm²', price: 2400 },
   { id: 'flashing-m', group: 'Zidna obloga', name: 'Lajsne i opšivke', unit: 'm', price: 420 },
   { id: 'wool-m2', group: 'Izolacija', name: 'Mineralna vuna 10 cm', unit: 'm²', price: 950 },
   { id: 'osb-sheet', group: 'Izolacija', name: 'OSB 12 mm, ploča 2,50×1,25', unit: 'ploča', price: 2300 },
-  { id: 'sheet-m2', group: 'Krov', name: 'Limeni ili laki pokrivač', unit: 'm²', price: 1900 },
+  { id: 'roof-t35-m2', group: 'Krov', name: 'Krovni trapezni lim T35', unit: 'm²', price: 1900 },
+  { id: 'roof-t18-m2', group: 'Krov', name: 'Krovni trapezni lim T18', unit: 'm²', price: 1900 },
+  { id: 'limeni-crep-m2', group: 'Krov', name: 'Limeni crep', unit: 'm²', price: 1900 },
   { id: 'seam-m2', group: 'Krov', name: 'Falcovani lim', unit: 'm²', price: 3600 },
+  { id: 'zinc-seam-m2', group: 'Krov', name: 'Falc, titan-cink', unit: 'm²', price: 3600 },
   { id: 'roofpanel-m2', group: 'Krov', name: 'Krovni sendvič panel', unit: 'm²', price: 4200 },
-  { id: 'tile-m2', group: 'Krov', name: 'Crep, šindra ili vlaknocement', unit: 'm²', price: 2600 },
+  { id: 'ondulin-m2', group: 'Krov', name: 'Bitumenska valovita ploča', unit: 'm²', price: 1900 },
+  { id: 'bitumen-m2', group: 'Krov', name: 'Bitumenska traka', unit: 'm²', price: 1900 },
   { id: 'membrane-m2', group: 'Krov', name: 'EPDM membrana', unit: 'm²', price: 2900 },
-  { id: 'green-m2', group: 'Krov', name: 'Zeleni krov, kompletan sistem', unit: 'm²', price: 7500 },
   { id: 'ridge-m', group: 'Krov', name: 'Slemenska opšivka', unit: 'm', price: 950 },
   { id: 'gutter-m', group: 'Oluk', name: 'Polukružni oluk', unit: 'm', price: 1450 },
   { id: 'downpipe', group: 'Oluk', name: 'Olučna cev', unit: 'kom', price: 2800 },
@@ -39,7 +68,28 @@ export const DEFAULT_PRICES = [
   { id: 'bars-m2', group: 'Stolarija', name: 'Zaštitna rešetka', unit: 'm²', price: 9000 },
   { id: 'swing-m2', group: 'Stolarija', name: 'Krilna i kipna vrata po površini', unit: 'm²', price: 18000 },
   { id: 'pedestrian', group: 'Stolarija', name: 'Bočna pešačka vrata', unit: 'kom', price: 28000 },
+  { id: 'el-board-1f', group: 'Struja', name: 'Razvodna tabla, monofazna', unit: 'kom', price: 12000 },
+  { id: 'el-board-3f', group: 'Struja', name: 'Razvodna tabla, trofazna', unit: 'kom', price: 22000 },
+  { id: 'el-feed-1f', group: 'Struja', name: 'Napojni kabl, monofazni', unit: 'm', price: 450 },
+  { id: 'el-feed-3f', group: 'Struja', name: 'Napojni kabl, trofazni', unit: 'm', price: 850 },
+  { id: 'el-cable-m', group: 'Struja', name: 'Instalacioni kabl', unit: 'm', price: 180 },
+  { id: 'el-socket', group: 'Struja', name: 'Utičnica', unit: 'kom', price: 1200 },
+  { id: 'el-socket-3f', group: 'Struja', name: 'Trofazna utičnica', unit: 'kom', price: 3500 },
+  { id: 'el-light', group: 'Struja', name: 'LED svetiljka', unit: 'kom', price: 3500 },
+  { id: 'ev-ready', group: 'Punjač i solar', name: 'Priprema za punjač', unit: 'kompl', price: 25000 },
+  { id: 'ev-charger-7', group: 'Punjač i solar', name: 'Punjač 7,4 kW, monofazni', unit: 'kom', price: 90000 },
+  { id: 'ev-charger-11', group: 'Punjač i solar', name: 'Punjač 11 kW, trofazni', unit: 'kom', price: 120000 },
+  { id: 'pv-kw', group: 'Punjač i solar', name: 'Solarna elektrana, komplet', unit: 'kW', price: 110000 },
+  { id: 'canopy-m2', group: 'Dodaci', name: 'Nadstrešnica, komplet', unit: 'm²', price: 9000 },
+  { id: 'vent-grille', group: 'Dodaci', name: 'Ventilaciona rešetka', unit: 'kom', price: 2500 },
+  { id: 'vent-fan', group: 'Dodaci', name: 'Zidni ventilator', unit: 'kom', price: 18000 },
 ]
+
+export const DEFAULT_PRICES = CATALOG.map((item) => ({ ...item, pack: GROUP_PACKAGE[item.group] }))
+
+export function packageName(id) {
+  return PACKAGES.find((entry) => entry.id === id)?.name ?? id
+}
 
 export function mergePrices(saved) {
   const overrides = new Map()
@@ -54,41 +104,47 @@ export function mergePrices(saved) {
   }))
 }
 
-export function orientationQuote(scene, estimate, catalog) {
-  const priceOf = (id) => {
-    const found = catalog.find((item) => item.id === id)
-    return found ? Number(found.price) || 0 : 0
-  }
-  const groups = {}
-  function add(skill, name, quantity, unit, unitPrice) {
-    if (!quantity || !unitPrice) return
-    if (!groups[skill]) groups[skill] = { items: [], total: 0 }
-    const total = Math.round(quantity * unitPrice)
-    groups[skill].items.push({
-      name,
-      quantity: Math.round(quantity * 100) / 100,
-      unit,
-      unitPrice,
-      total,
-    })
-    groups[skill].total += total
+// Sve stavke koje imaju cenu, sa količinom u jedinici cene.
+export function quoteItems(scene, estimate) {
+  const items = []
+  const add = (skill, name, quantity, unit, priceId) => {
+    if (quantity) items.push({ skill, name, quantity, unit, priceId })
   }
 
   estimate.lines.forEach((entry) => {
     if (!entry.priceId) return
-    add(entry.skill, entry.item, entry.meters ?? entry.quantity, entry.priceUnit || entry.unit, priceOf(entry.priceId))
+    add(entry.skill, entry.item, entry.meters ?? entry.quantity, entry.priceUnit || entry.unit, entry.priceId)
   })
 
   const windowArea = (scene.windows || []).reduce((sum, item) => sum + item.width * item.height, 0)
-  add('stolarija', 'Prozori po površini otvora', windowArea, 'm²', priceOf('window-m2'))
-  add('stolarija', 'Bočna pešačka vrata', (scene.pedestrianDoors || []).length, 'kom', priceOf('pedestrian'))
+  add('stolarija', 'Prozori po površini otvora', windowArea, 'm²', 'window-m2')
+  add('stolarija', 'Bočna pešačka vrata', (scene.pedestrianDoors || []).length, 'kom', 'pedestrian')
   const door = scene.door
   if (door && door.style !== 'none') {
     const area = door.width * door.height
-    if (door.style === 'roller') add('rolo', 'Rolo vrata po površini otvora', area, 'm²', priceOf('roller-m2'))
-    else if (door.style === 'sectional') add('rolo', 'Sekcijska vrata po površini otvora', area, 'm²', priceOf('sectional-m2'))
-    else add('stolarija', door.style === 'tilt' ? 'Kipna vrata po površini otvora' : 'Krilna vrata po površini otvora', area, 'm²', priceOf('swing-m2'))
+    if (door.style === 'roller') add('rolo', 'Rolo vrata po površini otvora', area, 'm²', 'roller-m2')
+    else if (door.style === 'sectional') add('rolo', 'Sekcijska vrata po površini otvora', area, 'm²', 'sectional-m2')
+    else add('stolarija', door.style === 'tilt' ? 'Kipna vrata po površini otvora' : 'Krilna vrata po površini otvora', area, 'm²', 'swing-m2')
   }
+  return items
+}
+
+export function orientationQuote(scene, estimate, catalog) {
+  const groups = {}
+  quoteItems(scene, estimate).forEach((item) => {
+    const unitPrice = Number(catalog.find((entry) => entry.id === item.priceId)?.price) || 0
+    if (!unitPrice) return
+    if (!groups[item.skill]) groups[item.skill] = { items: [], total: 0 }
+    const total = Math.round(item.quantity * unitPrice)
+    groups[item.skill].items.push({
+      name: item.name,
+      quantity: Math.round(item.quantity * 100) / 100,
+      unit: item.unit,
+      unitPrice,
+      total,
+    })
+    groups[item.skill].total += total
+  })
   return groups
 }
 

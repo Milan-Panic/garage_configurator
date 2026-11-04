@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Home,
   Layers,
+  PackagePlus,
   Palette,
   Plus,
   Redo2,
@@ -20,10 +21,14 @@ import {
   Send,
   Sofa,
   Sparkles,
+  Store,
   Trash2,
   Undo2,
+  Wind,
+  Zap,
 } from 'lucide-react'
-import { DIMENSION_LIMITS, formatMeters } from '../config'
+import { BUILDING_TYPES, CANOPY_FREE_AREA, CANOPY_LIMITS, CHARGER_OPTIONS, ELECTRIC_LIMITS, VENTILATION_OPTIONS, buildingType, canopySpan } from '../buildings'
+import { DIMENSION_LIMITS, LIGHT_STRUCTURE, formatMeters } from '../config'
 import { hingeCount } from '../estimate'
 import {
   DOOR_MATERIALS,
@@ -39,7 +44,8 @@ import {
   tinted,
 } from '../materials'
 import { navigate } from '../nav'
-import { formatDin } from '../prices'
+import { packageOffers } from '../partners'
+import { formatDin, quoteItems } from '../prices'
 import { formatSavedAt } from '../projects'
 import { PITCH_LIMITS, ROOF_FALLS, ROOF_KINDS, ROOF_RIDGES, roofGeometry } from '../roof'
 import {
@@ -65,15 +71,9 @@ const TABS = [
   { id: 'facade', label: 'Fasada', icon: Palette },
   { id: 'openings', label: 'Otvori', icon: DoorOpen },
   { id: 'interior', label: 'Unutra', icon: Sofa },
+  { id: 'extras', label: 'Dodaci', icon: PackagePlus },
   { id: 'estimate', label: 'Računica', icon: ScrollText },
   { id: 'projects', label: 'Projekti', icon: FolderOpen },
-]
-
-const SIZE_PRESETS = [
-  { id: 'one', name: 'Jedno vozilo', detail: '3,5 × 6 m', dimensions: { width: 3.5, length: 6, height: 2.5 } },
-  { id: 'store', name: 'Vozilo i ostava', detail: '4,5 × 7 m', dimensions: { width: 4.5, length: 7, height: 2.6 } },
-  { id: 'two', name: 'Dva vozila', detail: '6 × 6,5 m', dimensions: { width: 6, length: 6.5, height: 2.6 } },
-  { id: 'shop', name: 'Radionica', detail: '7 × 9 m', dimensions: { width: 7, length: 9, height: 3 } },
 ]
 
 const STYLE_PRESETS = [
@@ -96,40 +96,40 @@ const STYLE_PRESETS = [
     doors: { panel: 'sekcijska-glatka-crna', roller: 'rolo-antracit', swing: 'krilna-lim' },
   },
   {
-    id: 'drvo',
-    name: 'Brvnara',
-    detail: 'Drvo i šindra',
-    wall: 'drvo-vertikalna',
-    roof: 'bitumenska-sindra',
-    roofPatch: { kind: 'duo', pitch: 25 },
-    doors: { panel: 'sekcijska-hrast', roller: 'rolo-hrast', swing: 'krilna-drvo-kosa' },
+    id: 'dekor',
+    name: 'Dekor drvo',
+    detail: 'Lim sa dekorom hrasta',
+    wall: 'trapez-drvo-hrast',
+    roof: 'limeni-crep-antracit',
+    roofPatch: { kind: 'duo', pitch: 20 },
+    doors: { panel: 'sekcijska-hrast', roller: 'rolo-hrast', swing: 'krilna-lim' },
   },
   {
-    id: 'zidana',
-    name: 'Zidana',
-    detail: 'Cigla i crep',
-    wall: 'fasadna-cigla',
-    roof: 'glineni-crep',
-    roofPatch: { kind: 'duo', pitch: 28 },
-    doors: { panel: 'sekcijska-kasete', roller: 'rolo-bela', swing: 'krilna-drvo' },
+    id: 'seoska',
+    name: 'Seoska',
+    detail: 'Bela i limeni crep',
+    wall: 'trapez-t18-bela',
+    roof: 'limeni-crep-crveni',
+    roofPatch: { kind: 'duo', pitch: 22 },
+    doors: { panel: 'sekcijska-bela', roller: 'rolo-bela', swing: 'krilna-lim' },
   },
   {
-    id: 'nordik',
-    name: 'Nordik',
-    detail: 'Spaljeno drvo, cink',
-    wall: 'drvo-spaljeno',
-    roof: 'falc-cink',
+    id: 'topla',
+    name: 'Topla',
+    detail: 'Sendvič paneli',
+    wall: 'sendvic-antracit',
+    roof: 'krovni-sendvic',
+    roofPatch: { kind: 'mono', pitch: 6 },
+    doors: { panel: 'sekcijska-antracit', roller: 'rolo-antracit', swing: 'krilna-lim' },
+  },
+  {
+    id: 'industrija',
+    name: 'Industrija',
+    detail: 'Sinusni lim',
+    wall: 'sinus-lim',
+    roof: 'krov-trapez-antracit',
     roofPatch: { kind: 'mono', pitch: 8 },
-    doors: { panel: 'sekcijska-glatka-crna', roller: 'rolo-antracit', swing: 'krilna-lim' },
-  },
-  {
-    id: 'eko',
-    name: 'Eko',
-    detail: 'Demit i zeleni krov',
-    wall: 'ytong-demit',
-    roof: 'zeleni-krov',
-    roofPatch: { kind: 'flat' },
-    doors: { panel: 'sekcijska-hrast', roller: 'rolo-hrast', swing: 'krilna-drvo' },
+    doors: { panel: 'sekcijska-rebro-srebro', roller: 'rolo-srebro', swing: 'krilna-lim' },
   },
 ]
 
@@ -141,9 +141,7 @@ function stylePresetDoor(preset, style) {
 
 export function ControlPanel(props) {
   const {
-    scene,
     estimate,
-    quote,
     total,
     selected,
     canUndo,
@@ -186,8 +184,8 @@ export function ControlPanel(props) {
           <div className="min-w-0 flex-1">
             <input
               value={projectName}
-              placeholder="Moja garaža"
-              aria-label="Naziv garaže"
+              placeholder="Moj objekat"
+              aria-label="Naziv objekta"
               maxLength={60}
               onChange={(event) => onProjectNameChange(event.target.value)}
               className="w-full truncate rounded-md border border-transparent bg-transparent px-1.5 py-1 text-lg font-semibold text-stone-950 outline-none placeholder:text-stone-400 hover:border-stone-200 focus:border-stone-300 focus:bg-white"
@@ -208,7 +206,7 @@ export function ControlPanel(props) {
             Sačuvaj
           </button>
         </div>
-        <nav className="grid grid-cols-6 gap-1 rounded-xl bg-stone-100 p-1" aria-label="Delovi konfiguratora">
+        <nav className="grid grid-cols-7 gap-1 rounded-xl bg-stone-100 p-1" aria-label="Delovi konfiguratora">
           {TABS.map((entry) => {
             const Icon = entry.icon
             const active = tab === entry.id
@@ -237,7 +235,8 @@ export function ControlPanel(props) {
         {tab === 'facade' && <FacadeTab {...props} />}
         {tab === 'openings' && <OpeningsTab {...props} />}
         {tab === 'interior' && <InteriorTab {...props} />}
-        {tab === 'estimate' && <EstimateTab scene={scene} estimate={estimate} quote={quote} total={total} />}
+        {tab === 'extras' && <ExtrasTab {...props} />}
+        {tab === 'estimate' && <EstimateTab {...props} />}
         {tab === 'projects' && <ProjectsTab {...props} />}
       </div>
 
@@ -265,30 +264,60 @@ function ShapeTab({ scene, onDimensionChange, onSceneChange, onRoofChange, onSet
   const { dimensions, roof } = scene
   const roofShape = roofGeometry(dimensions, roof)
   const footprint = dimensions.width * dimensions.length
+  const { sizes } = buildingType(scene.buildingType)
+  const oversized = Object.entries(LIGHT_STRUCTURE).some(([key, limit]) => dimensions[key] > limit)
+
+  function applySize(size) {
+    Object.entries(size.dimensions).forEach(([key, value]) => onDimensionChange(key, value))
+    onSettle()
+  }
+
+  function chooseType(type) {
+    onSceneChange({
+      buildingType: type.id,
+      electric: type.electric ? { ...scene.electric, ...type.electric } : scene.electric,
+      insulation: type.insulation ?? scene.insulation,
+    })
+    applySize(type.sizes[0])
+  }
+
   return (
     <div className="space-y-6">
-      <Section icon={Sparkles} title="Brzi početak">
+      <Section icon={Sparkles} title="Šta praviš">
         <div className="grid grid-cols-2 gap-2">
-          {SIZE_PRESETS.map((preset) => {
-            const active =
-              preset.dimensions.width === dimensions.width &&
-              preset.dimensions.length === dimensions.length &&
-              preset.dimensions.height === dimensions.height
+          {BUILDING_TYPES.map((type) => {
+            const active = scene.buildingType === type.id
             return (
               <button
-                key={preset.id}
+                key={type.id}
                 type="button"
                 aria-pressed={active}
-                onClick={() => {
-                  Object.entries(preset.dimensions).forEach(([key, value]) => onDimensionChange(key, value))
-                  onSettle()
-                }}
+                onClick={() => chooseType(type)}
                 className={`rounded-lg border px-3 py-2 text-left transition ${
                   active ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white hover:border-stone-400'
                 }`}
               >
-                <span className="block text-sm font-medium">{preset.name}</span>
-                <span className={`block text-xs ${active ? 'text-stone-300' : 'text-stone-500'}`}>{preset.detail}</span>
+                <span className="block text-sm font-medium">{type.name}</span>
+                <span className={`block text-xs ${active ? 'text-stone-300' : 'text-stone-500'}`}>{type.detail}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {sizes.map((size) => {
+            const active = Object.entries(size.dimensions).every(([key, value]) => dimensions[key] === value)
+            return (
+              <button
+                key={size.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => applySize(size)}
+                className={`rounded-lg border px-2 py-1.5 text-left transition ${
+                  active ? 'border-orange-500 bg-orange-50' : 'border-stone-200 bg-white hover:border-stone-400'
+                }`}
+              >
+                <span className="block truncate text-xs font-medium text-stone-900">{size.name}</span>
+                <span className="block text-[10px] text-stone-500">{fmtSize(size.dimensions.width, size.dimensions.length)} m</span>
               </button>
             )
           })}
@@ -316,6 +345,12 @@ function ShapeTab({ scene, onDimensionChange, onSceneChange, onRoofChange, onSet
           <Stat label="Površina" value={`${footprint.toFixed(1).replace('.', ',')} m²`} />
           <Stat label={roof.kind === 'flat' ? 'Visina' : 'Do slemena'} value={formatMeters(dimensions.height + roofShape.rise)} />
         </div>
+        {oversized && (
+          <p className="flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
+            Za ove mere statičar treba da odredi konstrukciju.
+          </p>
+        )}
       </Section>
 
       <Section icon={Layers} title="Krov">
@@ -573,7 +608,7 @@ function OpeningsTab({
 
   return (
     <div className="space-y-6">
-      <Section icon={DoorOpen} title="Garažna vrata">
+      <Section icon={DoorOpen} title="Glavna vrata">
         <div className="grid grid-cols-3 gap-1.5">
           {DOOR_STYLES.map((style) => (
             <button
@@ -827,7 +862,7 @@ function InteriorTab({
             </button>
           ))}
         </div>
-        <Hint>Sendvič paneli i demit fasada su već izolovani, pa se za njih vuna ne računa.</Hint>
+        <Hint>Sendvič paneli su već izolovani, pa se za njih vuna ne računa.</Hint>
       </Section>
 
       <Section icon={Sofa} title="Inventar">
@@ -946,9 +981,158 @@ function CarSliders({ item, dimensions, onChange, onSettle }) {
   )
 }
 
+/* ---------- Dodaci ---------- */
+
+function ExtrasTab({ scene, onSceneChange, onElectricChange, onCanopyChange, onSettle }) {
+  const { electric, canopy, dimensions } = scene
+  const count = (value) => String(value)
+  const walls = WALL_IDS.map((id) => ({ id, name: wallFrame(id, dimensions).label.replace(' zid', '') }))
+  const canopyLength = canopySpan(canopy, dimensions)
+  const canopyArea = canopyLength * canopy.depth
+  const ventilation = VENTILATION_OPTIONS.find((entry) => entry.id === scene.ventilation)
+  return (
+    <div className="space-y-6">
+      <Section icon={Home} title="Nadstrešnica">
+        <Toggle
+          label="Nadstrešnica uz zid"
+          detail="Za auto, drva ili natkriven ulaz."
+          checked={canopy.enabled}
+          onChange={(enabled) => onCanopyChange({ enabled })}
+        />
+        {canopy.enabled && (
+          <>
+            <Segmented label="Zid" value={canopy.wall} options={walls} onChange={(wall) => onCanopyChange({ wall })} />
+            <Slider label="Dubina" value={canopy.depth} {...CANOPY_LIMITS.depth} onChange={(depth) => onCanopyChange({ depth })} onSettle={onSettle} />
+            <Slider
+              label="Dužina"
+              value={canopyLength}
+              min={CANOPY_LIMITS.length.min}
+              max={canopy.wall === 'front' || canopy.wall === 'back' ? dimensions.width : dimensions.length}
+              step={CANOPY_LIMITS.length.step}
+              onChange={(length) => onCanopyChange({ length })}
+              onSettle={onSettle}
+            />
+            <Hint>
+              Površina {canopyArea.toFixed(1).replace('.', ',')} m².{' '}
+              {canopyArea > CANOPY_FREE_AREA ? 'Preko 20 m² treba proveriti dozvolu.' : 'Do 20 m² akt obično nije potreban, uz uslove iz vodiča.'}
+            </Hint>
+          </>
+        )}
+      </Section>
+
+      <Section icon={Wind} title="Ventilacija">
+        <Segmented label="Izbor" value={scene.ventilation} options={VENTILATION_OPTIONS} onChange={(value) => onSceneChange({ ventilation: value })} columns={3} />
+        <Hint>{ventilation?.detail}. Broj se računa po površini poda.</Hint>
+      </Section>
+
+      <Section icon={Sparkles} title="Solarni paneli">
+        <Slider
+          label="Snaga elektrane"
+          value={electric.solar}
+          {...ELECTRIC_LIMITS.solar}
+          formatValue={(value) => (value > 0 ? `${String(value).replace('.', ',')} kW` : 'Bez panela')}
+          onChange={(solar) => onElectricChange({ solar })}
+          onSettle={onSettle}
+        />
+        <Hint>Računa se komplet po kW. Nosivost krova i priključenje na mrežu treba proveriti pre porudžbine.</Hint>
+      </Section>
+
+      <Section icon={Zap} title="Struja">
+        <Toggle
+          label="Struja u objektu"
+          detail="Tabla, kablovi, utičnice i rasveta ulaze u računicu."
+          checked={electric.enabled}
+          onChange={(enabled) => onElectricChange({ enabled })}
+        />
+        {electric.enabled && (
+          <>
+            <Segmented
+              label="Priključak"
+              value={electric.phase}
+              options={[
+                { id: 'single', name: 'Monofazni', detail: 'Rasveta i obične utičnice' },
+                { id: 'three', name: 'Trofazni', detail: 'Kompresor, mašine, jači punjač' },
+              ]}
+              onChange={(phase) => onElectricChange({ phase })}
+            />
+            <Slider label="Utičnice" value={electric.sockets} {...ELECTRIC_LIMITS.sockets} formatValue={count} onChange={(sockets) => onElectricChange({ sockets })} onSettle={onSettle} />
+            <Slider label="LED svetiljke" value={electric.lights} {...ELECTRIC_LIMITS.lights} formatValue={count} onChange={(lights) => onElectricChange({ lights })} onSettle={onSettle} />
+            <Slider
+              label="Udaljenost od brojila"
+              value={electric.distance}
+              {...ELECTRIC_LIMITS.distance}
+              formatValue={(value) => `${value} m`}
+              onChange={(distance) => onElectricChange({ distance })}
+              onSettle={onSettle}
+            />
+            <Segmented label="Punjač za električni auto" value={electric.charger} options={CHARGER_OPTIONS} onChange={(charger) => onElectricChange({ charger })} columns={3} />
+            <Hint>
+              {electric.charger === 'ready' && 'Priprema je jeftinija. Punjač možeš da dodaš kasnije bez novog razvlačenja kablova.'}
+              {electric.charger === 'charger' && (electric.phase === 'three' ? 'Na trofaznom priključku računa se punjač od 11 kW.' : 'Na monofaznom priključku računa se punjač od 7,4 kW.')}
+              {electric.charger === 'none' && 'Instalaciju izvodi i proverava električar.'}
+            </Hint>
+          </>
+        )}
+      </Section>
+    </div>
+  )
+}
+
 /* ---------- Računica ---------- */
 
-function EstimateTab({ scene, estimate, quote, total }) {
+function OffersSection({ scene, estimate, partners, onSceneChange }) {
+  if (partners.length === 0) return null
+  const packs = packageOffers(partners, quoteItems(scene, estimate)).filter((entry) => entry.offers.length > 0)
+  if (packs.length === 0) return null
+
+  function choose(pack, id) {
+    const offers = { ...scene.offers }
+    if (offers[pack] === id) delete offers[pack]
+    else offers[pack] = id
+    onSceneChange({ offers })
+  }
+
+  return (
+    <Section icon={Store} title="Ponude firmi">
+      <Hint>Jedna firma za ceo paket. Izabrana ponuda menja cene iz računice, a upit šalješ na strani Majstori.</Hint>
+      {packs.map(({ pack, offers }) => (
+        <div key={pack.id} className="space-y-1.5">
+          <p className="text-sm font-medium text-stone-900">{pack.name}</p>
+          {offers.map((offer) => {
+            const active = scene.offers[pack.id] === offer.partner.id
+            return (
+              <button
+                key={offer.partner.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => choose(pack.id, offer.partner.id)}
+                className={`w-full rounded-lg border px-3 py-2 text-left transition ${active ? 'border-orange-500 bg-orange-50' : 'border-stone-200 bg-white hover:border-stone-400'}`}
+              >
+                <span className="flex items-baseline justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate font-medium text-stone-900">{offer.partner.name}</span>
+                  <span className="shrink-0 font-semibold text-stone-900 tabular-nums">{formatDin(offer.total)}</span>
+                </span>
+                <span className="block text-xs text-stone-500">
+                  {offer.partner.city}
+                  {offer.partner.pricesValidUntil ? ` · važi do ${offer.partner.pricesValidUntil}` : ''}
+                  {offer.partner.sponsored ? ' · Sponzorisano' : ''}
+                </span>
+                {offer.partner.delivery && <span className="block text-xs text-stone-500">{offer.partner.delivery}</span>}
+                {!offer.complete && (
+                  <span className="mt-0.5 block text-xs text-amber-800">
+                    Nepotpuno: {offer.covered} od {offer.articles} artikala. Nema: {offer.missing.join(', ')}.
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      ))}
+    </Section>
+  )
+}
+
+function EstimateTab({ scene, estimate, quote, total, partners, onSceneChange }) {
   const [copied, setCopied] = useState(false)
   const sections = []
   estimate.lines.forEach((entry) => {
@@ -962,7 +1146,7 @@ function EstimateTab({ scene, estimate, quote, total }) {
 
   function copyList() {
     const text = [
-      `Garaža ${scene.dimensions.width} × ${scene.dimensions.length} × ${scene.dimensions.height} m`,
+      `${buildingType(scene.buildingType).name} ${scene.dimensions.width} × ${scene.dimensions.length} × ${scene.dimensions.height} m`,
       '',
       ...sections.flatMap((section) => [
         section.label.toUpperCase(),
@@ -983,7 +1167,7 @@ function EstimateTab({ scene, estimate, quote, total }) {
         <p className="text-xs tracking-wide text-stone-400 uppercase">Orijentaciona cena</p>
         <p className="mt-1 text-2xl font-semibold tabular-nums">{formatDin(total)}</p>
         <p className="mt-1 text-xs text-stone-400">
-          oko {formatDin(total / Math.max(1, area))} po m² · materijal i rad po stavkama sa strane Cene
+          oko {formatDin(total / Math.max(1, area))} po m² · zbir po stavkama, nije ponuda
         </p>
         <div className="mt-4 space-y-2">
           {skills.map(([skill, group]) => (
@@ -1011,6 +1195,8 @@ function EstimateTab({ scene, estimate, quote, total }) {
         <SoftButton icon={copied ? Check : ClipboardCopy} label={copied ? 'Kopirano' : 'Kopiraj spisak'} onClick={copyList} />
         <SoftButton icon={Send} label="Crteži i upit" onClick={() => navigate('/majstori')} />
       </div>
+
+      <OffersSection scene={scene} estimate={estimate} partners={partners} onSceneChange={onSceneChange} />
 
       <Section icon={ScrollText} title="Spisak materijala">
         <div className="space-y-2">
@@ -1076,7 +1262,7 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, onSaveProject, o
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-stone-300 bg-white px-3 py-2.5 text-sm font-medium text-stone-900 transition hover:border-stone-500"
       >
         <Plus size={15} className="text-orange-500" />
-        Nova garaža
+        Nov objekat
       </button>
       {pending && (
         <div className="space-y-2 rounded-lg bg-white p-3 ring-1 ring-stone-200">
@@ -1102,10 +1288,10 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, onSaveProject, o
       <Hint>
         {active
           ? `Otvoren je „${active.name}”. Izmene se same čuvaju posle pola sekunde.`
-          : 'Sačuvaj garažu da sledeći put nastaviš. Vidi je samo ovaj pregledač, a link iz imejla je otvara i na drugom uređaju.'}
+          : 'Sačuvaj objekat da sledeći put nastaviš. Vidi ga samo ovaj pregledač, a link iz imejla ga otvara i na drugom uređaju.'}
       </Hint>
       {projects.length === 0 ? (
-        <p className="rounded-lg bg-white px-3 py-6 text-center text-sm text-stone-500 ring-1 ring-stone-200">Još nema sačuvanih garaža.</p>
+        <p className="rounded-lg bg-white px-3 py-6 text-center text-sm text-stone-500 ring-1 ring-stone-200">Još nema sačuvanih objekata.</p>
       ) : (
         <ul className="space-y-1.5">
           {projects.map((project) => {

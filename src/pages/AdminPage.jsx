@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { formatDin } from '../prices'
+import { AdminPartners } from './AdminPartners'
 import { skillName } from './craftsmen'
 
 const TOKEN_KEY = 'mera-admin-token'
@@ -163,6 +164,8 @@ export function AdminPage() {
                 </article>
               ))}
             </section>
+
+            <AdminPartners token={token} />
           </div>
         )}
       </div>
@@ -189,7 +192,7 @@ function InquiryCard({ item, onDecide }) {
   return (
     <article className="rounded-xl border border-stone-300 bg-white p-4 text-sm">
       <p className="font-medium text-stone-950">
-        {skillName(item.skill)} · {item.projectName || 'Garaža'} · {statusText(item.status)}
+        {skillName(item.skill)} · {item.projectName || 'Objekat'} · {statusText(item.status)}
       </p>
       <p className="mt-1 text-stone-700">
         {item.customer?.name} · {item.customer?.phone} · {item.customer?.email}

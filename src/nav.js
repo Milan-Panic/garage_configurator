@@ -4,7 +4,9 @@ export const ROUTES = [
   { path: '/', label: 'Početna', main: true },
   { path: '/konfigurator', label: 'Konfigurator', main: true },
   { path: '/majstori', label: 'Majstori', main: true },
+  { path: '/dozvole', label: 'Dozvole', main: true },
   { path: '/radionica', label: 'Radionica' },
+  { path: '/partner', label: 'Za firme' },
   { path: '/cene', label: 'Cene' },
   { path: '/admin', label: 'Admin' },
 ]

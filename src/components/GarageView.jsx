@@ -21,6 +21,7 @@ export function GarageView({
   roof,
   gutters = true,
   pedestrianDoors = [],
+  canopy = null,
   orbit = false,
   theta = 0.5,
   onShot,
@@ -56,6 +57,7 @@ export function GarageView({
           roof={roof}
           gutters={gutters}
           pedestrianDoors={pedestrianDoors}
+          canopy={canopy}
         />
         {pedestrianDoors.map((item) => (
           <PedestrianDoor key={item.id} item={item} dimensions={dimensions} selected={false} onSelect={() => {}} onChange={() => {}} />

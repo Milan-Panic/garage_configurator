@@ -5,6 +5,8 @@ export const SKILLS = [
   { id: 'temelj', name: 'Betonska ploča' },
   { id: 'rolo', name: 'Rolo i sekcijska vrata' },
   { id: 'stolarija', name: 'Prozori, krilna i kipna vrata' },
+  { id: 'struja', name: 'Struja, punjač i solar' },
+  { id: 'oprema', name: 'Ventilacija' },
 ]
 
 export function jobsFor(scene) {
@@ -36,7 +38,7 @@ export function jobsFor(scene) {
     title: finishedFloor ? 'Betonska ploča i pod' : 'Betonska ploča',
     detail: finishedFloor
       ? 'Ploča i završni pod idu istom majstoru. Upit se šalje samo ako ga ovde uključiš.'
-      : 'Ploča stoji u prikazu. Upit zidaru šalje se samo ako ga ovde uključiš.',
+      : 'Ploča stoji u prikazu. Upit majstoru šalje se samo ako ga ovde uključiš.',
     send: false,
   })
   const style = scene.door?.style
@@ -44,7 +46,7 @@ export function jobsFor(scene) {
     jobs.push({
       skill: 'rolo',
       title: style === 'roller' ? 'Rolo vrata' : 'Sekcijska vrata',
-      detail: `Poseban upit monteru garažnih vrata. Cena ide po površini otvora${scene.door.motor ? ', motor je uključen' : ''}.`,
+      detail: `Poseban upit monteru vrata. Cena ide po površini otvora${scene.door.motor ? ', motor je uključen' : ''}.`,
       send: true,
     })
   }
@@ -56,6 +58,22 @@ export function jobsFor(scene) {
       title: 'Prozori, krilna i kipna vrata',
       detail: 'Prozori i krila po površini, bočna pešačka vrata po komadu.',
       send: true,
+    })
+  }
+  if (scene.electric?.enabled || scene.electric?.solar > 0) {
+    jobs.push({
+      skill: 'struja',
+      title: 'Struja',
+      detail: 'Instalacija, punjač i solarni paneli, koliko je uključeno. Radi električar.',
+      send: true,
+    })
+  }
+  if (scene.ventilation && scene.ventilation !== 'none') {
+    jobs.push({
+      skill: 'oprema',
+      title: 'Ventilacija',
+      detail: 'Upit se šalje samo ako ga ovde uključiš.',
+      send: false,
     })
   }
   return jobs

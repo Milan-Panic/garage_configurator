@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react'
+import { navigate } from '../nav'
+import { useOfferPartners } from '../partners'
 import { formatDin, mergePrices } from '../prices'
+
+const TOKEN_KEY = 'mera-admin-token'
 
 export function PricesPage() {
   const [prices, setPrices] = useState(() => mergePrices(null))
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [allowed, setAllowed] = useState(() => (localStorage.getItem(TOKEN_KEY) ? null : false))
+  const partners = useOfferPartners()
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY)
+    if (!token) return
+    fetch('/api/admin/me', { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => setAllowed(response.ok))
+      .catch(() => setAllowed(false))
+  }, [])
 
   useEffect(() => {
     fetch('/api/prices')
@@ -31,7 +45,7 @@ export function PricesPage() {
     try {
       const response = await fetch('/api/prices', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem(TOKEN_KEY)}` },
         body: JSON.stringify({ prices }),
       })
       const payload = await response.json()
@@ -43,15 +57,27 @@ export function PricesPage() {
     }
   }
 
+  if (allowed === null) return null
+  if (!allowed) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-stone-700">Cene menja samo administrator.</p>
+        <button type="button" onClick={() => navigate('/admin')} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white">
+          Prijavi se
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-6 py-10">
         <p className="text-sm font-medium tracking-wide text-stone-500 uppercase">Administrator</p>
         <h1 className="mt-2 text-3xl font-semibold text-stone-950">Orijentacione cene</h1>
         <p className="mt-3 text-sm leading-relaxed text-stone-700">
-          Stranica je za sada otvorena. Kasnije ostaje samo administratoru, koji ovde pusti sync cena. Svaka stavka ima
-          cenu po jedinici mere. Betonska ploča je grupa cementa, šljunka, peska i armature. Prozor, krilo i rolo vrata
-          idu po površini otvora, bočna vrata po komadu. Zbir je orijentacija, ne predračun.
+          Ovo su polazne cene za računicu kad kupac ne izabere firmu. Svaka stavka ima cenu po jedinici mere. Prozor, krilo i
+          rolo vrata idu po površini otvora, bočna vrata po komadu. Ispod stavke su cene aktivnih firmi. Zbir je orijentacija,
+          ne predračun.
         </p>
         <div className="mt-8 space-y-6">
           {groups.map((group) => (
@@ -63,6 +89,14 @@ export function PricesPage() {
                     <span>
                       {item.name}
                       <span className="ml-2 text-stone-500">po {item.unit}</span>
+                      {partners.some((partner) => partner.prices[item.id] > 0) && (
+                        <span className="block text-xs text-stone-500">
+                          {partners
+                            .filter((partner) => partner.prices[item.id] > 0)
+                            .map((partner) => `${partner.name} ${formatDin(partner.prices[item.id])}`)
+                            .join(' · ')}
+                        </span>
+                      )}
                     </span>
                     <input
                       inputMode="decimal"
@@ -82,7 +116,6 @@ export function PricesPage() {
         <button type="button" onClick={save} className="mt-6 rounded-lg bg-stone-900 px-4 py-3 text-sm font-medium text-white">
           Sačuvaj cene
         </button>
-        <p className="mt-4 text-xs text-stone-500">Primer zbira za jednu stavku: {formatDin(prices[0]?.price || 0)} je trenutna cena prve stavke.</p>
       </div>
     </div>
   )
