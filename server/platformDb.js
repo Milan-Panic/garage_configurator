@@ -2,6 +2,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { openPartners } from './partnerDb.js'
 
 export const COMMISSION_RATE = 0.1
 const DEMO_PASSWORD = 'radionica'
@@ -10,7 +11,7 @@ const PROJECT_ID = /^project-[a-z0-9-]{4,80}$/
 const VISITOR_KEY = /^[a-f0-9]{24,80}$/
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-const SKILLS = ['konstrukcija', 'krov', 'oluk', 'temelj', 'rolo', 'stolarija']
+const SKILLS = ['konstrukcija', 'krov', 'oluk', 'temelj', 'rolo', 'stolarija', 'struja', 'oprema']
 
 const SKILL_LABEL = {
   konstrukcija: 'Metalna konstrukcija',
@@ -19,6 +20,8 @@ const SKILL_LABEL = {
   temelj: 'Betonska ploča',
   rolo: 'Rolo i sekcijska vrata',
   stolarija: 'Prozori, krilna i kipna vrata',
+  struja: 'Struja, punjač i solar',
+  oprema: 'Ventilacija',
 }
 
 const SEED = [
@@ -29,6 +32,7 @@ const SEED = [
   ['rolo-pancevo', 'Monter rolo vrata', 'Rolo servis', 'Pančevo', '061111105', 'rolo@pancevo.mera', 'Rolo vrata po površini otvora.', ['rolo']],
   ['stolarija-pancevo', 'Bravar krila i prozora', 'Krilo i prozor', 'Pančevo', '061111106', 'stolarija@pancevo.mera', 'Krilna vrata, bočna vrata i prozori.', ['stolarija']],
   ['zidar-su', 'Zidar', 'Temelj i ploča', 'Subotica', '061111107', 'zidar@subotica.mera', 'Betonska ploča: cement, pesak, šljunak i armatura.', ['temelj']],
+  ['elektro-ns', 'Električar', 'Elektro instalacije', 'Novi Sad', '061111108', 'struja@elektro.mera', 'Tabla, kablovi, rasveta, punjači za auto i solarni paneli.', ['struja']],
 ]
 
 let database
@@ -128,6 +132,7 @@ export function openPlatform(root) {
   ensureColumn('inquiries', 'rejected_at', 'TEXT')
   seedCraftsmen()
   seedAdmin()
+  openPartners(database, { hashPassword, checkPassword })
   return database
 }
 
@@ -138,14 +143,14 @@ function ensureColumn(table, name, type) {
 }
 
 function seedCraftsmen() {
-  const count = database.prepare('SELECT COUNT(*) AS count FROM craftsmen').get().count
-  if (count > 0) return
   const insert = database.prepare(`
     INSERT INTO craftsmen (id, profession, shop, city, phone, email, password_hash, bio)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `)
   const skill = database.prepare('INSERT INTO craftsman_skills (craftsman_id, skill) VALUES (?, ?)')
+  const existing = database.prepare('SELECT id FROM craftsmen WHERE id = ? OR email = ?')
   for (const entry of SEED) {
+    if (existing.get(entry[0], entry[5])) continue
     insert.run(entry[0], entry[1], entry[2], entry[3], entry[4], entry[5], hashPassword(DEMO_PASSWORD), entry[6])
     entry[7].forEach((item) => skill.run(entry[0], item))
   }
@@ -549,7 +554,7 @@ function sanitizeLibrary(raw) {
       seen.add(entry.id)
       projects.push({
         id: entry.id,
-        name: clean(entry.name, 60) || 'Garaža',
+        name: clean(entry.name, 60) || 'Objekat',
         updatedAt: Number.isFinite(entry.updatedAt) ? entry.updatedAt : Date.now(),
         scene: entry.scene,
       })

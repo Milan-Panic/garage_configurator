@@ -32,6 +32,7 @@ export function GarageCanvas({
   roof,
   gutters = true,
   pedestrianDoors = [],
+  canopy,
   car,
   selected,
   projectName,
@@ -55,7 +56,7 @@ export function GarageCanvas({
     if (!state) return
     state.gl.render(state.scene, state.camera)
     const link = document.createElement('a')
-    link.download = `${(projectName || 'garaza').replace(/[^\p{L}\p{N}-]+/gu, '-').toLowerCase()}.png`
+    link.download = `${(projectName || 'objekat').replace(/[^\p{L}\p{N}-]+/gu, '-').toLowerCase()}.png`
     link.href = state.gl.domElement.toDataURL('image/png')
     link.click()
   }
@@ -108,6 +109,7 @@ export function GarageCanvas({
           roof={roof}
           gutters={gutters}
           pedestrianDoors={pedestrianDoors}
+          canopy={canopy}
           xray={xray}
         />
         {pedestrianDoors.map((item) => (

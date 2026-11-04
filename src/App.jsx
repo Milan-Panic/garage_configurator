@@ -8,11 +8,14 @@ import { CraftsmenPage } from './pages/CraftsmenPage'
 import { PricesPage } from './pages/PricesPage'
 import { WorkshopPage } from './pages/WorkshopPage'
 import { AdminPage } from './pages/AdminPage'
+import { PartnerPage } from './pages/PartnerPage'
+import { PermitsPage } from './pages/PermitsPage'
 import { adoptVisitorKey } from './visitor'
 import { clampDimension } from './config'
 import { DOOR_MATERIALS, doorMaterialsFor, sceneMaterials } from './materials'
 import { useHistory } from './history'
 import { buildEstimate } from './estimate'
+import { applyOffers, useOfferPartners } from './partners'
 import { mergePrices, orientationQuote, quoteTotal } from './prices'
 import {
   CAR_PRESETS,
@@ -48,7 +51,7 @@ function adoptIds(scene) {
 }
 
 // Klizači šalju mnogo malih izmena; to je jedan korak u istoriji.
-const CONTINUOUS = new Set(['along', 'sill', 'width', 'height', 'depth', 'length', 'x', 'z', 'open', 'pitch'])
+const CONTINUOUS = new Set(['along', 'sill', 'width', 'height', 'depth', 'length', 'x', 'z', 'open', 'pitch', 'sockets', 'lights', 'distance', 'solar'])
 
 function isContinuous(patch) {
   const keys = Object.keys(patch)
@@ -93,7 +96,7 @@ export default function App() {
   if (!boot) {
     return (
       <Shell>
-        <StatusScreen message="Učitavam garaže…" />
+        <StatusScreen message="Učitavam projekte…" />
       </Shell>
     )
   }
@@ -114,7 +117,7 @@ function Shell({ children }) {
 }
 
 function ResumePage({ token }) {
-  const [message, setMessage] = useState('Vraćam sačuvane garaže…')
+  const [message, setMessage] = useState('Vraćam sačuvane projekte…')
 
   useEffect(() => {
     let stop = false
@@ -159,6 +162,7 @@ function Configurator({ boot }) {
   const [saveError, setSaveError] = useState('')
   const [saveNotice, setSaveNotice] = useState(null)
   const [prices, setPrices] = useState(() => mergePrices(null))
+  const partners = useOfferPartners()
   const saveSerial = useRef(0)
   const libraryRef = useRef(library)
   const sceneRef = useRef(scene)
@@ -177,7 +181,8 @@ function Configurator({ boot }) {
       )
   const fullScene = useMemo(() => ({ ...scene, door }), [scene, door])
   const estimate = useMemo(() => buildEstimate(fullScene), [fullScene])
-  const quote = useMemo(() => orientationQuote(fullScene, estimate, prices), [fullScene, estimate, prices])
+  const catalog = useMemo(() => applyOffers(prices, partners, scene.offers), [prices, partners, scene.offers])
+  const quote = useMemo(() => orientationQuote(fullScene, estimate, catalog), [fullScene, estimate, catalog])
   const total = quoteTotal(quote)
   const path = usePath()
   const resumeMatch = /^\/nastavi\/([a-f0-9]{24,80})$/.exec(path)
@@ -260,7 +265,7 @@ function Configurator({ boot }) {
         return true
       })
       .catch(() => {
-        if (serial === saveSerial.current) setSaveError('Nije moguće sačuvati garažu. Proveri vezu sa serverom.')
+        if (serial === saveSerial.current) setSaveError('Nije moguće sačuvati projekat. Proveri vezu sa serverom.')
         return false
       })
   }
@@ -289,7 +294,7 @@ function Configurator({ boot }) {
     storeLibrary(snap.library).then((saved) => {
       if (!saved) return
       setSaveNotice({
-        message: updating ? 'Izmene su sačuvane.' : 'Garaža je sačuvana.',
+        message: updating ? 'Izmene su sačuvane.' : 'Projekat je sačuvan.',
         scene: snap.record.scene,
         name: snap.record.name,
       })
@@ -320,7 +325,7 @@ function Configurator({ boot }) {
 
   function startFrom(source) {
     if (!libraryRef.current.activeId && isSceneDirty(null, nameRef.current, sceneRef.current)) {
-      if (!window.confirm('Trenutna garaža nije sačuvana. Da li da je zamenim ovim primerom?')) return
+      if (!window.confirm('Trenutni projekat nije sačuvan. Da li da ga zamenim ovim primerom?')) return
     }
     const nextScene = normalizeScene(source)
     adoptIds(nextScene)
@@ -346,6 +351,14 @@ function Configurator({ boot }) {
 
   function updateScene(patch) {
     commit((current) => ({ ...current, ...patch }))
+  }
+
+  function updateCanopy(patch) {
+    apply(patch, (current) => ({ ...current, canopy: { ...current.canopy, ...patch } }))
+  }
+
+  function updateElectric(patch) {
+    apply(patch, (current) => ({ ...current, electric: { ...current.electric, ...patch } }))
   }
 
   function updateDimension(key, value) {
@@ -572,13 +585,15 @@ function Configurator({ boot }) {
     setSelected((current) => (current?.id === target.id ? null : current))
   }
 
-  const pages = ['/konfigurator', '/majstori', '/cene', '/radionica', '/admin']
+  const pages = ['/konfigurator', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin']
 
   return (
     <>
       {path === '/majstori' && <CraftsmenPage scene={fullScene} projectName={projectNameOrDefault(projectName)} />}
+      {path === '/dozvole' && <PermitsPage />}
       {path === '/cene' && <PricesPage />}
       {path === '/radionica' && <WorkshopPage />}
+      {path === '/partner' && <PartnerPage />}
       {path === '/admin' && <AdminPage />}
       {resumeMatch && <ResumePage token={resumeMatch[1]} />}
       {!pages.includes(path) && !resumeMatch && <HomePage onStartFrom={startFrom} />}
@@ -591,6 +606,9 @@ function Configurator({ boot }) {
             total={total}
             onDimensionChange={updateDimension}
             onSceneChange={updateScene}
+            onElectricChange={updateElectric}
+            onCanopyChange={updateCanopy}
+            partners={partners}
             selected={selected}
             canUndo={canUndo}
             canRedo={canRedo}
@@ -637,6 +655,7 @@ function Configurator({ boot }) {
               roof={scene.roof}
               gutters={scene.gutters !== false}
               pedestrianDoors={scene.pedestrianDoors || []}
+              canopy={scene.canopy}
               car={scene.car}
               selected={selected}
               projectName={projectName}

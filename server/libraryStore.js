@@ -99,7 +99,7 @@ function sanitizeProject(project) {
   const updatedAt = Number(project.updatedAt)
   return {
     id: project.id,
-    name: name || 'Garaža',
+    name: name || 'Objekat',
     updatedAt: Number.isFinite(updatedAt) ? updatedAt : Date.now(),
     scene: project.scene,
   }

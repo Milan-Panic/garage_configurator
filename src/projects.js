@@ -32,7 +32,7 @@ export async function persistLibrary(library) {
     headers: { 'Content-Type': 'application/json', 'X-Visitor-Key': visitorKey() },
     body: JSON.stringify({ activeId: library.activeId, projects: library.projects }),
   })
-  if (!response.ok) throw new Error('Garaža nije sačuvana na disk.')
+  if (!response.ok) throw new Error('Projekat nije sačuvan na disk.')
   return normalizeLibrary(await response.json())
 }
 
@@ -47,7 +47,7 @@ export function upsertProject(projects, record) {
 }
 
 export function projectNameOrDefault(name) {
-  return cleanName(name) || 'Garaža'
+  return cleanName(name) || 'Objekat'
 }
 
 export function isSceneDirty(active, name, scene) {
@@ -75,7 +75,7 @@ export function normalizeLibrary(raw) {
     seen.add(project.id)
     projects.push({
       id: project.id,
-      name: cleanName(project.name) || 'Garaža',
+      name: cleanName(project.name) || 'Objekat',
       updatedAt: Number.isFinite(project.updatedAt) ? project.updatedAt : Date.now(),
       scene: normalizeScene(project.scene),
     })

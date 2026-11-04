@@ -2,6 +2,7 @@ import { DEFAULT_DIMENSIONS, clampDimension } from './config'
 import { DEFAULT_MATERIALS, DOOR_MATERIALS, FLOOR_FINISHES, FRAME_COLORS, INSULATION_OPTIONS, resolveMaterials } from './materials'
 import { CAR_COLORS, CAR_PRESETS, FURNITURE_TYPES, WINDOW_TYPES, WALL_IDS, clampCar, clampDoor, clampFurniture, clampPedestrian, clampWindow, defaultDoorSize } from './layout'
 import { initialRoof, normalizeRoof } from './roof'
+import { BUILDING_TYPES, DEFAULT_CANOPY, DEFAULT_ELECTRIC, VENTILATION_OPTIONS, normalizeCanopy, normalizeElectric } from './buildings'
 
 const DOOR_STYLES = ['none', 'sectional', 'tilt', 'single', 'double', 'roller']
 
@@ -24,6 +25,11 @@ export const initialScene = {
   pedestrianDoors: [],
   roof: initialRoof,
   car: null,
+  buildingType: 'garaza',
+  electric: DEFAULT_ELECTRIC,
+  offers: {},
+  ventilation: 'none',
+  canopy: DEFAULT_CANOPY,
 }
 
 export function scenesEqual(left, right) {
@@ -145,7 +151,17 @@ export function normalizeScene(raw) {
     pedestrianDoors,
     roof,
     car,
+    buildingType: BUILDING_TYPES.some((entry) => entry.id === source.buildingType) ? source.buildingType : 'garaza',
+    electric: normalizeElectric(source.electric),
+    offers: cleanOffers(source.offers),
+    ventilation: VENTILATION_OPTIONS.some((entry) => entry.id === source.ventilation) ? source.ventilation : 'none',
+    canopy: normalizeCanopy(source.canopy),
   }
+}
+
+function cleanOffers(raw) {
+  if (!raw || typeof raw !== 'object') return {}
+  return Object.fromEntries(Object.entries(raw).filter(([, id]) => typeof id === 'string' && id))
 }
 
 function uniqueItems(items, prefix) {

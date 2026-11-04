@@ -31,6 +31,25 @@ import {
   workshopInquiries,
   writeVisitorLibrary,
 } from './platformDb.js'
+import {
+  adminCreatePartner,
+  adminPartnerData,
+  adminUpdatePartner,
+  billMonth,
+  createLead,
+  customerLeads,
+  decideLead,
+  deletePartner,
+  loginPartner,
+  markChargePaid,
+  partnerDashboard,
+  partnerFromToken,
+  publicOffers,
+  registerPartner,
+  reportSale,
+  savePartnerPrices,
+} from './partnerDb.js'
+import { PACKAGES } from '../src/prices.js'
 
 const MAX_BODY = 12_000_000
 let remindersStarted = false
@@ -59,6 +78,77 @@ function createMiddleware(root) {
         console.error(error)
         sendJson(res, 500, { error: 'Cene nisu sačuvane.' })
       })
+      return
+    }
+    if (url?.startsWith('/api/admin/partners') || url?.startsWith('/api/admin/leads/') || url?.startsWith('/api/admin/charges/') || url === '/api/admin/me') {
+      const admin = adminFromToken(bearer(req))
+      if (!admin) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      handleAdminPartners(url, req, res, admin)
+      return
+    }
+    if (url === '/api/offers' && req.method === 'GET') {
+      sendJson(res, 200, { partners: publicOffers() })
+      return
+    }
+    if (url === '/api/partner-leads' && req.method === 'POST') {
+      handleJson(req, res, async (raw) => {
+        const result = createLead(raw)
+        if (result.error) return sendJson(res, 400, result)
+        await notifyNewLead(result.lead).catch((error) => console.error(error))
+        sendJson(res, 200, { id: result.id, code: result.code, customerKey: result.customerKey })
+      })
+      return
+    }
+    if (url === '/api/customer/leads' && req.method === 'GET') {
+      sendJson(res, 200, { leads: customerLeads(req.headers['x-customer-key']) })
+      return
+    }
+    if (url === '/api/partner/register' && req.method === 'POST') {
+      handleJson(req, res, async (raw) => {
+        const result = registerPartner(raw)
+        if (result.error) return sendJson(res, 400, result)
+        await deliver({
+          to: adminEmail(),
+          subject: `Nova firma čeka odobrenje: ${result.partner.name}`,
+          text: [`${result.partner.name}, ${result.partner.city}`, `${result.partner.phone} · ${result.partner.email}`, '', `Odobri: ${publicUrl()}/admin`].join('\n'),
+        }).catch((error) => console.error(error))
+        sendJson(res, 200, { ok: true })
+      })
+      return
+    }
+    if (url === '/api/partner/login' && req.method === 'POST') {
+      handleJson(req, res, (raw) => {
+        const result = loginPartner(raw.email, raw.password)
+        if (!result) return sendJson(res, 401, { error: 'Imejl ili lozinka nisu tačni.' })
+        sendJson(res, 200, result)
+      })
+      return
+    }
+    if (url?.startsWith('/api/partner/')) {
+      const partner = partnerFromToken(bearer(req))
+      if (!partner) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      if (url === '/api/partner/me' && req.method === 'GET') {
+        sendJson(res, 200, { partner, ...partnerDashboard(partner.id) })
+        return
+      }
+      if (url === '/api/partner/prices' && req.method === 'PUT') {
+        handleJson(req, res, (raw) => {
+          const result = savePartnerPrices(partner.id, raw)
+          if (result.error) return sendJson(res, 400, result)
+          sendJson(res, 200, result)
+        })
+        return
+      }
+      const sale = /^\/api\/partner\/leads\/([^/]+)\/sale$/.exec(url)
+      if (sale && req.method === 'POST') {
+        handleJson(req, res, (raw) => {
+          const result = reportSale(partner.id, decodeURIComponent(sale[1]), raw.amount)
+          if (result.error) return sendJson(res, 400, result)
+          sendJson(res, 200, result)
+        })
+        return
+      }
+      sendJson(res, 404, { error: 'Nepoznat zahtev.' })
       return
     }
     if (url === '/api/craftsmen' && req.method === 'GET') {
@@ -180,7 +270,7 @@ function createMiddleware(root) {
     if (url !== '/api/library') return next()
     handleLibrary(req, res).catch((error) => {
       console.error(error)
-      sendJson(res, 500, { error: 'Čuvanje garaže nije uspelo.' })
+      sendJson(res, 500, { error: 'Čuvanje projekta nije uspelo.' })
     })
   }
 }
@@ -205,7 +295,7 @@ async function runReminders() {
         'Majstor nije odgovorio tri dana.',
         '',
         `Posao: ${skillLabel(inquiry.skill)}`,
-        `Garaža: ${inquiry.project_name || 'Garaža'}`,
+        `Objekat: ${inquiry.project_name || 'Objekat'}`,
         `Majstor: ${inquiry.craftsman?.shop || ''} (${inquiry.craftsman?.email || ''})`,
         `Kupac: ${inquiry.customer_name}, ${inquiry.customer_phone}, ${inquiry.customer_email}`,
         '',
@@ -324,7 +414,7 @@ async function notifyNewInquiry(inquiry, resumeToken) {
       `Imejl: ${inquiry.customer_email}`,
       `Posao: ${skillLabel(inquiry.skill)}`,
       `Majstor: ${inquiry.craftsman?.shop || ''}, ${inquiry.craftsman?.city || ''} (${inquiry.craftsman?.email || ''})`,
-      `Garaža: ${inquiry.project_name || 'Garaža'}`,
+      `Objekat: ${inquiry.project_name || 'Objekat'}`,
       `Orijentaciono: ${money}`,
       inquiry.note ? `Poruka: ${inquiry.note}` : '',
       '',
@@ -339,7 +429,7 @@ async function notifyNewInquiry(inquiry, resumeToken) {
       '',
       `Upit za posao „${skillLabel(inquiry.skill)}” je primljen i čeka odobrenje. Majstor ga još ne vidi.`,
       '',
-      'Iste garaže možeš da nastaviš i na drugom uređaju:',
+      'Iste projekte možeš da nastaviš i na drugom uređaju:',
       `${publicUrl()}/nastavi/${resumeToken}`,
       '',
       'Mera',
@@ -356,7 +446,7 @@ async function notifyApproved(inquiry) {
       'Stigao je odobren upit.',
       '',
       `Posao: ${skillLabel(inquiry.skill)}`,
-      `Garaža: ${inquiry.project_name || 'Garaža'}`,
+      `Objekat: ${inquiry.project_name || 'Objekat'}`,
       `Orijentaciona cena sa sajta: ${formatMoney(inquiry.orientation_total)}`,
       inquiry.note ? `Poruka kupca: ${inquiry.note}` : '',
       '',
@@ -389,6 +479,117 @@ async function notifyRejected(inquiry) {
       `Zdravo ${inquiry.first_name || inquiry.customer_name},`,
       '',
       `Upit za „${skillLabel(inquiry.skill)}” nije prosleđen majstoru.`,
+      '',
+      'Mera',
+    ].join('\n'),
+  })
+}
+
+function handleAdminPartners(url, req, res, admin) {
+  if (url === '/api/admin/me') return sendJson(res, 200, { admin })
+  if (url === '/api/admin/partners' && req.method === 'GET') return sendJson(res, 200, adminPartnerData())
+  const reply = (result) => sendJson(res, result.error ? 400 : 200, result)
+  if (url === '/api/admin/partners' && req.method === 'POST') {
+    handleJson(req, res, (raw) => reply(adminCreatePartner(raw)))
+    return
+  }
+  if (url === '/api/admin/partners/billing' && req.method === 'POST') return reply(billMonth())
+  const prices = /^\/api\/admin\/partners\/([^/]+)\/prices$/.exec(url)
+  if (prices && req.method === 'PUT') {
+    handleJson(req, res, (raw) => reply(savePartnerPrices(decodeURIComponent(prices[1]), raw)))
+    return
+  }
+  const partner = /^\/api\/admin\/partners\/([^/]+)$/.exec(url)
+  if (partner && req.method === 'PUT') {
+    handleJson(req, res, (raw) => reply(adminUpdatePartner(decodeURIComponent(partner[1]), raw)))
+    return
+  }
+  if (partner && req.method === 'DELETE') return reply(deletePartner(decodeURIComponent(partner[1])))
+  const lead = /^\/api\/admin\/leads\/([^/]+)$/.exec(url)
+  if (lead && req.method === 'POST') {
+    handleJson(req, res, async (raw) => {
+      const result = decideLead(decodeURIComponent(lead[1]), raw.decision)
+      if (result.error) return sendJson(res, 400, result)
+      await notifyLeadDecision(result.lead).catch((error) => console.error(error))
+      sendJson(res, 200, { ok: true })
+    })
+    return
+  }
+  const charge = /^\/api\/admin\/charges\/([^/]+)\/paid$/.exec(url)
+  if (charge && req.method === 'POST') return reply(markChargePaid(decodeURIComponent(charge[1])))
+  sendJson(res, 404, { error: 'Nepoznat zahtev.' })
+}
+
+function packageLabel(id) {
+  return PACKAGES.find((entry) => entry.id === id)?.name ?? id
+}
+
+async function notifyNewLead(lead) {
+  if (!lead) return
+  const label = packageLabel(lead.package)
+  await deliver({
+    to: adminEmail(),
+    subject: `Novi upit za firmu: ${lead.partner?.name} · ${label}`,
+    text: [
+      'Upit za ponudu materijala čeka odobrenje. Firma ga još ne vidi.',
+      '',
+      `Firma: ${lead.partner?.name}`,
+      `Paket: ${label}`,
+      `Kupac: ${lead.customer_name}, ${lead.customer_phone}, ${lead.customer_email}`,
+      `Ponuda po cenovniku: ${formatMoney(lead.offer_total)} (${lead.covered} od ${lead.articles} artikala)`,
+      '',
+      `Odobri ili odbij: ${publicUrl()}/admin`,
+    ].join('\n'),
+  })
+  await deliver({
+    to: lead.customer_email,
+    subject: `Upit je primljen: ${label}`,
+    text: [
+      `Zdravo ${lead.first_name},`,
+      '',
+      `Upit firmi ${lead.partner?.name} za paket „${label}” je primljen i čeka odobrenje.`,
+      `Kod ponude: ${lead.code}`,
+      '',
+      'Mera',
+    ].join('\n'),
+  })
+}
+
+async function notifyLeadDecision(lead) {
+  if (!lead) return
+  const label = packageLabel(lead.package)
+  if (lead.status === 'rejected') {
+    await deliver({
+      to: lead.customer_email,
+      subject: `Upit nije odobren: ${label}`,
+      text: [`Zdravo ${lead.first_name},`, '', `Upit firmi ${lead.partner?.name} za paket „${label}” nije prosleđen.`, '', 'Mera'].join('\n'),
+    })
+    return
+  }
+  await deliver({
+    to: lead.partner?.email,
+    subject: `Novi kupac: ${label} · ${lead.code}`,
+    text: [
+      'Stigao je odobren upit za ponudu materijala.',
+      '',
+      `Kod ponude: ${lead.code}`,
+      `Paket: ${label}`,
+      `Kupac: ${lead.customer_name}, ${lead.customer_phone}, ${lead.customer_email}`,
+      `Po vašem cenovniku: ${formatMoney(lead.offer_total)}`,
+      lead.note ? `Poruka kupca: ${lead.note}` : '',
+      '',
+      `Stavke su na ${publicUrl()}/partner`,
+    ].filter((line) => line !== '').join('\n'),
+  })
+  await deliver({
+    to: lead.customer_email,
+    subject: `Upit je poslat firmi: ${label}`,
+    text: [
+      `Zdravo ${lead.first_name},`,
+      '',
+      `Firma ${lead.partner?.name} je dobila tvoj upit za paket „${label}” i javiće ti se sa konačnom ponudom.`,
+      `Telefon firme: ${lead.partner?.phone}`,
+      `Kod ponude, koji pomeni firmi: ${lead.code}`,
       '',
       'Mera',
     ].join('\n'),
@@ -450,6 +651,10 @@ async function handlePrices(root, req, res) {
     sendJson(res, 405, { error: 'Metoda nije podržana.' })
     return
   }
+  if (!adminFromToken(bearer(req))) {
+    sendJson(res, 401, { error: 'Cene menja samo administrator.' })
+    return
+  }
   const raw = parseJson(await readBody(req))
   if (!raw) {
     sendJson(res, 400, { error: 'Telo zahteva nije ispravan JSON.' })
@@ -458,7 +663,7 @@ async function handlePrices(root, req, res) {
   const prices = Array.isArray(raw.prices)
     ? raw.prices
         .filter((item) => item && typeof item.id === 'string')
-        .map((item) => ({ id: item.id, price: Number(item.price) || 0 }))
+        .map((item) => ({ id: item.id, price: Math.max(0, Number(item.price) || 0) }))
     : []
   await fs.mkdir(path.dirname(file), { recursive: true })
   await fs.writeFile(file, `${JSON.stringify(prices, null, 2)}\n`)

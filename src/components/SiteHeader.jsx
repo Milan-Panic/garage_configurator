@@ -19,7 +19,7 @@ export function SiteHeader() {
         <LogoMark />
         <span className="leading-tight">
           <span className="block text-[15px] font-bold tracking-tight text-white">Mera</span>
-          <span className="hidden text-[11px] text-stone-400 sm:block">Složi garažu sam.</span>
+          <span className="hidden text-[11px] text-stone-400 sm:block">Montažni objekti po meri.</span>
         </span>
       </a>
 
@@ -39,7 +39,7 @@ export function SiteHeader() {
           onClick={() => navigate('/konfigurator')}
           className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-orange-500 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 sm:flex"
         >
-          Napravi garažu
+          Složi objekat
           <ArrowRight size={15} />
         </button>
       )}
