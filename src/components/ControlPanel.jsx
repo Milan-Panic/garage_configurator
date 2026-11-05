@@ -230,7 +230,7 @@ export function ControlPanel(props) {
         </nav>
       </header>
 
-      <div key={tab} className="flex-1 overflow-y-auto px-4 py-4">
+      <div key={tab} className="relative flex-1 overflow-y-auto px-4 py-4">
         {tab === 'shape' && <ShapeTab {...props} />}
         {tab === 'facade' && <FacadeTab {...props} />}
         {tab === 'openings' && <OpeningsTab {...props} />}
