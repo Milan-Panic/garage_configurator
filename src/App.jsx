@@ -10,8 +10,10 @@ import { WorkshopPage } from './pages/WorkshopPage'
 import { AdminPage } from './pages/AdminPage'
 import { PartnerPage } from './pages/PartnerPage'
 import { PermitsPage } from './pages/PermitsPage'
+import { OfferPage } from './pages/OfferPage'
 import { adoptVisitorKey } from './visitor'
 import { clampDimension } from './config'
+import { settleCar, settleFurniture } from './collide'
 import { DOOR_MATERIALS, doorMaterialsFor, sceneMaterials } from './materials'
 import { useHistory } from './history'
 import { buildEstimate } from './estimate'
@@ -37,6 +39,7 @@ import {
   projectNameOrDefault,
   upsertProject,
 } from './projects'
+import { MAX_ROOMS, freeCorner, normalizeRooms, roomKind } from './rooms'
 import { highestSerial, initialScene, normalizeScene, scenesEqual } from './scene'
 
 let nextId = 1
@@ -51,7 +54,7 @@ function adoptIds(scene) {
 }
 
 // Klizači šalju mnogo malih izmena; to je jedan korak u istoriji.
-const CONTINUOUS = new Set(['along', 'sill', 'width', 'height', 'depth', 'length', 'x', 'z', 'open', 'pitch', 'sockets', 'lights', 'distance', 'solar'])
+const CONTINUOUS = new Set(['along', 'sill', 'width', 'height', 'depth', 'length', 'x', 'z', 'open', 'pitch', 'sockets', 'lights', 'distance', 'solar', 'elevation', 'doorOffset', 'altitude', 'count', 'offset', 'units'])
 
 function isContinuous(patch) {
   const keys = Object.keys(patch)
@@ -109,7 +112,7 @@ export default function App() {
 
 function Shell({ children }) {
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-[var(--page)]">
+    <div className="app-shell flex h-dvh flex-col overflow-hidden bg-[var(--page)]">
       <SiteHeader />
       <div className="min-h-0 flex-1">{children}</div>
     </div>
@@ -353,6 +356,11 @@ function Configurator({ boot }) {
     commit((current) => ({ ...current, ...patch }))
   }
 
+  // Deo scene koji je sam objekat (lokacija, krovni prozori) ili prost broj (jedinice u nizu).
+  function updatePart(key, patch) {
+    apply(patch, (current) => ({ ...current, [key]: key === 'units' ? patch.units : { ...current[key], ...patch } }))
+  }
+
   function updateCanopy(patch) {
     apply(patch, (current) => ({ ...current, canopy: { ...current.canopy, ...patch } }))
   }
@@ -364,14 +372,16 @@ function Configurator({ boot }) {
   function updateDimension(key, value) {
     transient((current) => {
       const dimensions = { ...current.dimensions, [key]: clampDimension(key, value) }
+      const nextDoor = clampDoor(current.door?.width ? current.door : { ...current.door, ...defaultDoorSize(dimensions) }, dimensions)
       return {
         ...current,
         dimensions,
         windows: current.windows.map((item) => clampWindow(item, dimensions)),
-        door: clampDoor(current.door?.width ? current.door : { ...current.door, ...defaultDoorSize(dimensions) }, dimensions),
-        pedestrianDoors: (current.pedestrianDoors || []).map((item) => clampPedestrian(item, dimensions, current.door)),
+        door: nextDoor,
+        pedestrianDoors: (current.pedestrianDoors || []).map((item) => clampPedestrian(item, dimensions, nextDoor)),
         furniture: current.furniture.map((item) => clampFurniture(item, dimensions)),
         car: current.car ? clampCar(current.car, dimensions) : null,
+        rooms: normalizeRooms(current.rooms, dimensions),
       }
     })
   }
@@ -498,7 +508,7 @@ function Configurator({ boot }) {
     apply(patch, (current) => ({
       ...current,
       furniture: current.furniture.map((item) =>
-        item.id === id ? clampFurniture({ ...item, ...patch }, current.dimensions) : item,
+        item.id === id ? settleFurniture(current, item, clampFurniture({ ...item, ...patch }, current.dimensions)) : item,
       ),
     }))
   }
@@ -523,6 +533,36 @@ function Configurator({ boot }) {
     })
   }
 
+  function addRoom(kindId) {
+    const kind = roomKind(kindId)
+    const existing = sceneRef.current.rooms || []
+    if (!freeCorner(existing) || existing.length >= MAX_ROOMS) return
+    const id = createId('room')
+    commit((current) => {
+      const rooms = current.rooms || []
+      const corner = freeCorner(rooms)
+      if (!corner || rooms.length >= MAX_ROOMS) return current
+      const next = [...rooms, { id, kind: kind.id, corner, width: kind.width, depth: kind.depth, doorSide: 'depth', doorOffset: 0.5 }]
+      return { ...current, rooms: normalizeRooms(next, current.dimensions) }
+    })
+    setSelected({ kind: 'room', id })
+  }
+
+  function updateRoom(id, patch) {
+    apply(patch, (current) => {
+      const rooms = current.rooms || []
+      // Ugao koji je već zauzet menja mesto sa ovom prostorijom.
+      const swapped = patch.corner
+        ? rooms.map((room) => (room.id !== id && room.corner === patch.corner ? { ...room, corner: rooms.find((entry) => entry.id === id)?.corner ?? room.corner } : room))
+        : rooms
+      const edited = swapped.map((room) => (room.id === id ? { ...room, ...patch } : room))
+      // Prostorija koja se menja ima prednost: ostale se skupljaju oko nje.
+      const ordered = [...edited.filter((room) => room.id === id), ...edited.filter((room) => room.id !== id)]
+      const fitted = normalizeRooms(ordered, current.dimensions)
+      return { ...current, rooms: edited.map((room) => fitted.find((entry) => entry.id === room.id)).filter(Boolean) }
+    })
+  }
+
   function updateRoof(patch) {
     apply(patch, (current) => ({ ...current, roof: { ...current.roof, ...patch } }))
   }
@@ -536,6 +576,7 @@ function Configurator({ boot }) {
           length: preset.length,
           width: preset.width,
           height: preset.height,
+          elevation: current.car?.elevation ?? 0,
           x: current.car?.x ?? 0,
           z: current.car?.z ?? 0.2,
           rotation: current.car?.rotation ?? 0,
@@ -551,7 +592,7 @@ function Configurator({ boot }) {
   function updateCar(patch) {
     apply(patch, (current) => ({
       ...current,
-      car: current.car ? clampCar({ ...current.car, ...patch }, current.dimensions) : null,
+      car: current.car ? settleCar(current, current.car, clampCar({ ...current.car, ...patch }, current.dimensions)) : null,
     }))
   }
 
@@ -576,6 +617,11 @@ function Configurator({ boot }) {
         ...current,
         pedestrianDoors: (current.pedestrianDoors || []).filter((item) => item.id !== target.id),
       }))
+    } else if (target.kind === 'room') {
+      commit((current) => ({
+        ...current,
+        rooms: (current.rooms || []).filter((item) => item.id !== target.id),
+      }))
     } else if (target.kind === 'car') {
       removeCar()
       return
@@ -585,12 +631,13 @@ function Configurator({ boot }) {
     setSelected((current) => (current?.id === target.id ? null : current))
   }
 
-  const pages = ['/konfigurator', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin']
+  const pages = ['/konfigurator', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda']
 
   return (
     <>
       {path === '/majstori' && <CraftsmenPage scene={fullScene} projectName={projectNameOrDefault(projectName)} />}
       {path === '/dozvole' && <PermitsPage />}
+      {path === '/ponuda' && <OfferPage scene={fullScene} projectName={projectNameOrDefault(projectName)} estimate={estimate} catalog={catalog} />}
       {path === '/cene' && <PricesPage />}
       {path === '/radionica' && <WorkshopPage />}
       {path === '/partner' && <PartnerPage />}
@@ -608,6 +655,7 @@ function Configurator({ boot }) {
             onSceneChange={updateScene}
             onElectricChange={updateElectric}
             onCanopyChange={updateCanopy}
+            onPartChange={updatePart}
             partners={partners}
             selected={selected}
             canUndo={canUndo}
@@ -640,6 +688,8 @@ function Configurator({ boot }) {
             onAddCar={addCar}
             onChangeCar={updateCar}
             onRemoveCar={removeCar}
+            onAddRoom={addRoom}
+            onChangeRoom={updateRoom}
             onRemove={removeItem}
           />
           <main className="relative min-h-[48dvh] flex-1 md:min-h-0">
@@ -657,6 +707,7 @@ function Configurator({ boot }) {
               pedestrianDoors={scene.pedestrianDoors || []}
               canopy={scene.canopy}
               car={scene.car}
+              scene={fullScene}
               selected={selected}
               projectName={projectName}
               onSelect={setSelected}

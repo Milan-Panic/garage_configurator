@@ -25,6 +25,7 @@ export const initialRoof = {
   pitch: 10,
   fall: 'back',
   ridge: 'length',
+  truss: false,
 }
 
 export function normalizeRoof(raw) {
@@ -35,7 +36,7 @@ export function normalizeRoof(raw) {
   pitch = Math.min(PITCH_LIMITS.max, Math.max(PITCH_LIMITS.min, pitch))
   const fall = ROOF_FALLS.some((entry) => entry.id === source.fall) ? source.fall : initialRoof.fall
   const ridge = ROOF_RIDGES.some((entry) => entry.id === source.ridge) ? source.ridge : initialRoof.ridge
-  return { kind, pitch, fall, ridge }
+  return { kind, pitch, fall, ridge, truss: Boolean(source.truss) }
 }
 
 export function roofGeometry(dimensions, roofInput) {

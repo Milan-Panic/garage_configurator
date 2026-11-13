@@ -37,6 +37,11 @@ export function patternMaterial(spec) {
     roughness: spec.roughness,
     metalness: spec.metalness,
   })
+  // Polikarbonat i slične ploče propuštaju svetlo.
+  if (spec.opacity && spec.opacity < 1) {
+    material.transparent = true
+    material.opacity = spec.opacity
+  }
   materials.set(spec.id, material)
   return material
 }

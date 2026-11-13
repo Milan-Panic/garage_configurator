@@ -1,15 +1,18 @@
 import { OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { Box, Camera, Eye, Maximize2, ScanEye } from 'lucide-react'
+import { Box, Camera, Eye, ImagePlus, Maximize2, ScanEye, SquareDashed, Trees, X } from 'lucide-react'
 import { formatMeters } from '../config'
 import { roofGeometry } from '../roof'
 import { Car } from './Car'
+import { findCollisions } from '../collide'
+import { SceneExtras } from './Extras'
 import { FurniturePiece } from './Furniture'
 import { Garage } from './Garage'
 import { Ground } from './Ground'
 import { PedestrianDoor } from './PedestrianDoor'
+import { Yard } from './Yard'
 import { WindowUnit } from './WindowUnit'
 
 const VIEWS = [
@@ -34,6 +37,7 @@ export function GarageCanvas({
   pedestrianDoors = [],
   canopy,
   car,
+  scene,
   selected,
   projectName,
   onSelect,
@@ -46,6 +50,19 @@ export function GarageCanvas({
   const { width, length, height } = dimensions
   const rise = roofGeometry(dimensions, roof).rise
   const [xray, setXray] = useState(false)
+  const [openTop, setOpenTop] = useState(false)
+  const [yard, setYard] = useState(false)
+  // Kupčeva fotografija placa kao pozadina. Ostaje samo u ovom pregledaču.
+  const [photo, setPhoto] = useState(null)
+  useEffect(() => () => photo && URL.revokeObjectURL(photo), [photo])
+  const units = scene?.units || 1
+  const offsetX = ((units - 1) * width) / 2
+  const clashes = useMemo(() => (scene ? findCollisions(scene) : new Set()), [scene])
+  // Dizalica ispod auta prati visinu na koju je auto podignut.
+  const liftUnderCar = car
+    ? furniture.find((item) => (item.type === 'lift2' || item.type === 'lift4') && Math.abs(item.x - car.x) < 0.7 && Math.abs(item.z - car.z) < 1.2)
+    : null
+  const carBase = car ? (liftUnderCar?.type === 'lift4' ? Math.max(0.14, car.elevation || 0) : car.elevation || 0) : 0
   const [view, setView] = useState({ ...VIEWS[0], nonce: 0 })
   const three = useRef(null)
   const roofLabel =
@@ -55,19 +72,44 @@ export function GarageCanvas({
     const state = three.current
     if (!state) return
     state.gl.render(state.scene, state.camera)
-    const link = document.createElement('a')
-    link.download = `${(projectName || 'objekat').replace(/[^\p{L}\p{N}-]+/gu, '-').toLowerCase()}.png`
-    link.href = state.gl.domElement.toDataURL('image/png')
-    link.click()
+    const source = state.gl.domElement
+    const name = `${(projectName || 'objekat').replace(/[^\p{L}\p{N}-]+/gu, '-').toLowerCase()}.png`
+    const save = (href) => {
+      const link = document.createElement('a')
+      link.download = name
+      link.href = href
+      link.click()
+    }
+    if (!photo) {
+      save(source.toDataURL('image/png'))
+      return
+    }
+    // Sa fotografijom u pozadini slika se slaže iz dva sloja, kao na ekranu.
+    const image = new Image()
+    image.onload = () => {
+      const sheet = document.createElement('canvas')
+      sheet.width = source.width
+      sheet.height = source.height
+      const context = sheet.getContext('2d')
+      const scale = Math.max(sheet.width / image.width, sheet.height / image.height)
+      const drawWidth = image.width * scale
+      const drawHeight = image.height * scale
+      context.drawImage(image, (sheet.width - drawWidth) / 2, (sheet.height - drawHeight) / 2, drawWidth, drawHeight)
+      state.gl.render(state.scene, state.camera)
+      context.drawImage(source, 0, 0)
+      save(sheet.toDataURL('image/png'))
+    }
+    image.src = photo
   }
 
   return (
-    <div className="absolute inset-0">
+    <div className="absolute inset-0 bg-cover bg-center" style={photo ? { backgroundImage: `url(${photo})` } : undefined}>
       <Canvas
         shadows
+        frameloop="demand"
         dpr={[1, 2]}
-        camera={{ position: [4.6, 3.5, 15], fov: 40, near: 0.1, far: 200 }}
-        gl={{ antialias: true }}
+        camera={{ position: [4.6, 3.5, 15], fov: 40, near: 0.1, far: 400 }}
+        gl={{ antialias: true, alpha: true }}
         onCreated={(state) => {
           three.current = state
           state.gl.toneMapping = THREE.ACESFilmicToneMapping
@@ -75,13 +117,14 @@ export function GarageCanvas({
         }}
         onPointerMissed={() => onSelect(null)}
       >
-        <color attach="background" args={['#dbe4ec']} />
-        <fog attach="fog" args={['#dbe4ec', 34, 90]} />
+        {!photo && !yard && <color attach="background" args={['#dbe4ec']} />}
+        {!photo && !yard && <fog attach="fog" args={['#dbe4ec', 34, 90]} />}
+        {!photo && yard && <Yard width={width * units} length={length} offsetX={offsetX} doorWall={door?.style === 'none' ? 'front' : door?.wall} />}
         <hemisphereLight args={['#eef3f8', '#9a9c84', 0.65]} />
         <ambientLight intensity={0.22} />
         <directionalLight position={[2, 4, 12]} intensity={0.6} />
         <directionalLight
-          position={[16, 24, 10]}
+          position={[offsetX + 16, 24, 10]}
           intensity={1.75}
           castShadow
           shadow-mapSize={[2048, 2048]}
@@ -94,8 +137,16 @@ export function GarageCanvas({
           shadow-bias={-0.00025}
           shadow-normalBias={0.04}
         />
-        <FrameCamera width={width} length={length} height={height + rise} view={view} />
-        <Ground width={width} length={length} onClear={() => onSelect(null)} />
+        <FrameCamera width={width * units} length={length} height={height + rise} view={view} offsetX={offsetX} />
+        <group position={[offsetX, 0, 0]}>
+          <Ground width={width * units} length={length} plain={yard || Boolean(photo)} onClear={() => onSelect(null)} />
+          {photo && (
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]} receiveShadow>
+              <planeGeometry args={[80, 80]} />
+              <shadowMaterial opacity={0.32} />
+            </mesh>
+          )}
+        </group>
         <Garage
           width={width}
           length={length}
@@ -110,7 +161,16 @@ export function GarageCanvas({
           gutters={gutters}
           pedestrianDoors={pedestrianDoors}
           canopy={canopy}
+          site={scene?.site}
           xray={xray}
+          hideRoof={openTop}
+        />
+        <SceneExtras
+          scene={scene}
+          openTop={openTop}
+          xray={xray}
+          selectedRoomId={selected?.kind === 'room' ? selected.id : null}
+          onSelectRoom={(id) => onSelect({ kind: 'room', id })}
         />
         {pedestrianDoors.map((item) => (
           <PedestrianDoor
@@ -139,6 +199,8 @@ export function GarageCanvas({
             key={item.id}
             item={item}
             selected={selected?.kind === 'furniture' && selected.id === item.id}
+            clash={clashes.has(item.id)}
+            raise={liftUnderCar?.id === item.id ? carBase : 0}
             onSelect={() => onSelect({ kind: 'furniture', id: item.id })}
             onChange={(patch) => onChangeFurniture(item.id, patch)}
             onGestureEnd={onGestureEnd}
@@ -148,6 +210,8 @@ export function GarageCanvas({
           <Car
             item={car}
             selected={selected?.kind === 'car'}
+            clash={clashes.has('car')}
+            base={carBase}
             onSelect={() => onSelect({ kind: 'car' })}
             onChange={onChangeCar}
             onGestureEnd={onGestureEnd}
@@ -186,6 +250,57 @@ export function GarageCanvas({
           </button>
           <button
             type="button"
+            aria-pressed={openTop}
+            onClick={() => setOpenTop((value) => !value)}
+            title="Skini krov da vidiš raspored unutra"
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+              openTop ? 'bg-orange-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <SquareDashed size={14} />
+            Bez krova
+          </button>
+          <button
+            type="button"
+            aria-pressed={yard && !photo}
+            onClick={() => {
+              setPhoto(null)
+              setYard((value) => !value || Boolean(photo))
+            }}
+            title="Prikaži objekat u dvorištu, sa nebom, drvećem i čovekom za razmeru"
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+              yard && !photo ? 'bg-orange-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <Trees size={14} />
+            Dvorište
+          </button>
+          <label
+            title="Stavi svoju fotografiju placa u pozadinu, pa okreni objekat da legne na mesto"
+            className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+              photo ? 'bg-orange-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <ImagePlus size={14} />
+            Moja slika
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) setPhoto(URL.createObjectURL(file))
+                event.target.value = ''
+              }}
+            />
+          </label>
+          {photo && (
+            <button type="button" aria-label="Ukloni fotografiju" title="Ukloni fotografiju" onClick={() => setPhoto(null)} className="rounded-lg p-1.5 text-stone-600 hover:bg-stone-100">
+              <X size={14} />
+            </button>
+          )}
+          <button
+            type="button"
             onClick={snapshot}
             title="Sačuvaj sliku ovog pogleda"
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-100"
@@ -203,7 +318,8 @@ export function GarageCanvas({
             {formatMeters(width).replace(' m', '')} × {formatMeters(length).replace(' m', '')} × {formatMeters(height)}
           </span>
           <span className="block text-xs text-stone-500">
-            {roofLabel} · {(width * length).toFixed(1).replace('.', ',')} m²
+            {units > 1 ? `${units} u nizu · ` : ''}
+            {roofLabel} · {(width * length * units).toFixed(1).replace('.', ',')} m²
           </span>
         </span>
       </div>
@@ -215,7 +331,7 @@ export function GarageCanvas({
   )
 }
 
-function FrameCamera({ width, length, height, view }) {
+function FrameCamera({ width, length, height, view, offsetX = 0 }) {
   const camera = useThree((state) => state.camera)
   const controls = useThree((state) => state.controls)
   const current = useRef({ phi: view.phi, theta: view.theta })
@@ -226,7 +342,7 @@ function FrameCamera({ width, length, height, view }) {
       nonce.current = view.nonce
       current.current = { phi: view.phi, theta: view.theta }
     }
-    const target = new THREE.Vector3(0, Math.max(1.05, height * 0.42), 0)
+    const target = new THREE.Vector3(offsetX, Math.max(1.05, height * 0.42), 0)
     const distance = Math.hypot(width, length) * 1.15 + 4.4
     const { phi, theta } = current.current
 
@@ -239,7 +355,7 @@ function FrameCamera({ width, length, height, view }) {
     } else {
       camera.lookAt(target)
     }
-  }, [width, length, height, camera, controls, view])
+  }, [width, length, height, offsetX, camera, controls, view])
 
   return (
     <OrbitControls
@@ -247,7 +363,7 @@ function FrameCamera({ width, length, height, view }) {
       enableDamping
       maxPolarAngle={Math.PI / 2 - 0.04}
       minDistance={3}
-      maxDistance={48}
+      maxDistance={90}
       onEnd={(event) => {
         const orbit = event.target
         const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(orbit.target))

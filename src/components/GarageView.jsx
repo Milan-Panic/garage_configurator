@@ -1,15 +1,18 @@
 import { OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import * as THREE from 'three'
+import { roofGeometry } from '../roof'
+import { SceneExtras, StaticWindow } from './Extras'
 import { Garage } from './Garage'
 import { Ground } from './Ground'
 import { PedestrianDoor } from './PedestrianDoor'
-import { WindowModel } from './WindowUnit'
-import { FLOOR_LEVEL } from '../config'
-import { wallFrame } from '../layout'
-import { frameColor } from '../materials'
+import { Yard } from './Yard'
 
+const noop = () => {}
+
+// Neinteraktivan prikaz objekta: za početnu stranu, upite i slike u ponudi.
+// `scene` dodaje struju, panele, prostorije i niz; `setting="yard"` crta dvorište.
 export function GarageView({
   dimensions,
   wallMaterial,
@@ -22,28 +25,58 @@ export function GarageView({
   gutters = true,
   pedestrianDoors = [],
   canopy = null,
+  scene = null,
+  setting = 'studio',
+  hideRoof = false,
+  interior = false,
   orbit = false,
   theta = 0.5,
+  phi = 1.15,
+  zoom = 1,
   onShot,
   className = 'h-56 w-full',
   autoRotate = false,
   background = '#dbe4ec',
 }) {
   const { width, length, height } = dimensions
+  const units = scene?.units || 1
+  const offsetX = ((units - 1) * width) / 2
+  const rise = roofGeometry(dimensions, roof).rise
+  const yard = setting === 'yard'
   return (
     <div className={className}>
       <Canvas
         shadows
-        dpr={[1, 1.5]}
-        camera={{ position: [5, 3.4, 14], fov: 40, near: 0.1, far: 200 }}
+        dpr={onShot ? 2 : [1, 1.5]}
+        camera={{ position: [5, 3.4, 14], fov: yard ? 34 : 40, near: 0.1, far: 400 }}
         gl={{ antialias: true, preserveDrawingBuffer: Boolean(onShot) }}
+        onCreated={(state) => {
+          state.gl.toneMapping = THREE.ACESFilmicToneMapping
+          state.gl.toneMappingExposure = yard ? 0.95 : 1.05
+        }}
       >
-        <color attach="background" args={[background]} />
-        <hemisphereLight args={['#e7eef6', '#b7ad9c', 0.55]} />
-        <ambientLight intensity={0.3} />
-        <directionalLight position={[12, 18, 8]} intensity={1.4} />
-        <Aim width={width} length={length} height={height} theta={theta} />
-        <Ground width={width} length={length} />
+        {!yard && <color attach="background" args={[background]} />}
+        <hemisphereLight args={yard ? ['#dcebff', '#8a9670', 0.75] : ['#e7eef6', '#b7ad9c', 0.55]} />
+        <ambientLight intensity={yard ? 0.18 : 0.3} />
+        <directionalLight
+          position={[offsetX + 16, 22, 12]}
+          intensity={yard ? 1.9 : 1.4}
+          castShadow
+          shadow-mapSize={[2048, 2048]}
+          shadow-camera-near={1}
+          shadow-camera-far={90}
+          shadow-camera-left={-34}
+          shadow-camera-right={34}
+          shadow-camera-top={34}
+          shadow-camera-bottom={-34}
+          shadow-bias={-0.00025}
+          shadow-normalBias={0.04}
+        />
+        <Aim width={width * units} length={length} height={height + rise * 0.5} theta={theta} phi={phi} zoom={zoom} offsetX={offsetX} />
+        {yard && <Yard width={width * units} length={length} offsetX={offsetX} doorWall={door?.style === 'none' ? 'front' : door?.wall} />}
+        <group position={[offsetX, 0, 0]}>
+          <Ground width={width * units} length={length} plain={yard} />
+        </group>
         <Garage
           width={width}
           length={length}
@@ -58,13 +91,16 @@ export function GarageView({
           gutters={gutters}
           pedestrianDoors={pedestrianDoors}
           canopy={canopy}
+          site={scene?.site}
+          hideRoof={hideRoof}
         />
         {pedestrianDoors.map((item) => (
-          <PedestrianDoor key={item.id} item={item} dimensions={dimensions} selected={false} onSelect={() => {}} onChange={() => {}} />
+          <PedestrianDoor key={item.id} item={item} dimensions={dimensions} selected={false} onSelect={noop} onChange={noop} />
         ))}
         {windows.map((item) => (
           <StaticWindow key={item.id} item={item} dimensions={dimensions} />
         ))}
+        <SceneExtras scene={scene} openTop={hideRoof} interior={interior} />
         {(orbit || autoRotate) && (
           <OrbitControls enablePan={false} enableZoom={false} enableRotate={orbit} autoRotate={autoRotate} autoRotateSpeed={0.6} maxPolarAngle={Math.PI / 2.05} makeDefault />
         )}
@@ -74,13 +110,13 @@ export function GarageView({
   )
 }
 
-function Aim({ width, length, height, theta }) {
+function Aim({ width, length, height, theta, phi, zoom, offsetX }) {
   const camera = useThree((state) => state.camera)
   const controls = useThree((state) => state.controls)
   useLayoutEffect(() => {
-    const target = new THREE.Vector3(0, Math.max(1.05, height * 0.42), 0)
-    const distance = Math.hypot(width, length) * 1.15 + 4.4
-    camera.position.copy(target).add(new THREE.Vector3().setFromSphericalCoords(distance, 1.15, theta))
+    const target = new THREE.Vector3(offsetX, Math.max(1.05, height * 0.42), 0)
+    const distance = (Math.hypot(width, length) * 1.15 + 4.4) / zoom
+    camera.position.copy(target).add(new THREE.Vector3().setFromSphericalCoords(distance, phi, theta))
     camera.updateProjectionMatrix()
     if (controls) {
       controls.target.copy(target)
@@ -88,27 +124,27 @@ function Aim({ width, length, height, theta }) {
     } else {
       camera.lookAt(target)
     }
-  }, [width, length, height, theta, camera, controls])
+  }, [width, length, height, theta, phi, zoom, offsetX, camera, controls])
   return null
 }
 
 function Capture({ onShot }) {
   const { gl } = useThree()
-  const frames = useRef(0)
-  const sent = useRef(false)
   const shotRef = useRef(onShot)
-  shotRef.current = onShot
+  useEffect(() => {
+    shotRef.current = onShot
+  })
   useLayoutEffect(() => {
     let live = true
+    let frames = 0
     const tick = () => {
-      if (!live || sent.current) return
-      frames.current += 1
-      if (frames.current < 3) {
+      if (!live) return
+      frames += 1
+      if (frames < 4) {
         requestAnimationFrame(tick)
         return
       }
-      sent.current = true
-      shotRef.current(gl.domElement.toDataURL('image/jpeg', 0.62))
+      shotRef.current(gl.domElement.toDataURL('image/jpeg', 0.82))
     }
     requestAnimationFrame(tick)
     return () => {
@@ -116,24 +152,4 @@ function Capture({ onShot }) {
     }
   }, [gl])
   return null
-}
-
-function StaticWindow({ item, dimensions }) {
-  const wall = wallFrame(item.wall, dimensions)
-  const basis = new THREE.Matrix4().makeBasis(
-    new THREE.Vector3(...wall.axis),
-    new THREE.Vector3(0, 1, 0),
-    new THREE.Vector3(...wall.normal),
-  )
-  const quaternion = new THREE.Quaternion().setFromRotationMatrix(basis)
-  const position = [
-    wall.origin[0] + wall.axis[0] * item.along,
-    FLOOR_LEVEL + item.sill + item.height / 2,
-    wall.origin[2] + wall.axis[2] * item.along,
-  ]
-  return (
-    <group position={position} quaternion={quaternion}>
-      <WindowModel type={item.type} width={item.width} height={item.height} color={frameColor(item.frame)} bars={item.bars} />
-    </group>
-  )
 }

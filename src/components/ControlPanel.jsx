@@ -6,10 +6,13 @@ import {
   Check,
   ClipboardCopy,
   Copy,
+  DoorClosed,
   DoorOpen,
   FolderOpen,
   Home,
+  FileText,
   Layers,
+  MapPin,
   PackagePlus,
   Palette,
   Plus,
@@ -27,7 +30,9 @@ import {
   Wind,
   Zap,
 } from 'lucide-react'
-import { BUILDING_TYPES, CANOPY_FREE_AREA, CANOPY_LIMITS, CHARGER_OPTIONS, ELECTRIC_LIMITS, VENTILATION_OPTIONS, buildingType, canopySpan } from '../buildings'
+import { BUILDING_TYPES, CANOPY_FREE_AREA, CANOPY_LIMITS, CHARGER_OPTIONS, ELECTRIC_LIMITS, UNIT_LIMITS, VENTILATION_OPTIONS, buildingType, canopySpan } from '../buildings'
+import { ALTITUDE_LIMITS, DEFAULT_SITE, PLACES, WIND_OPTIONS, snowLoad } from '../site'
+import { DEFAULT_SKYLIGHTS, SKYLIGHT_KINDS, SKYLIGHT_LIMITS } from '../skylights'
 import { DIMENSION_LIMITS, LIGHT_STRUCTURE, formatMeters } from '../config'
 import { hingeCount } from '../estimate'
 import {
@@ -48,6 +53,7 @@ import { packageOffers } from '../partners'
 import { formatDin, quoteItems } from '../prices'
 import { formatSavedAt } from '../projects'
 import { PITCH_LIMITS, ROOF_FALLS, ROOF_KINDS, ROOF_RIDGES, roofGeometry } from '../roof'
+import { MAX_ROOMS, ROOM_CORNERS, ROOM_KINDS, roomKind, roomLimits } from '../rooms'
 import {
   CAR_COLORS,
   CAR_PRESETS,
@@ -164,7 +170,7 @@ export function ControlPanel(props) {
     setSeenSelection(selectionKey)
     const kind = selected?.kind
     if (kind === 'window' || kind === 'pedestrian') setTab('openings')
-    else if (kind === 'furniture' || kind === 'car') setTab('interior')
+    else if (kind === 'furniture' || kind === 'car' || kind === 'room') setTab('interior')
   }
 
   const status = saveError
@@ -230,7 +236,7 @@ export function ControlPanel(props) {
         </nav>
       </header>
 
-      <div key={tab} className="flex-1 overflow-y-auto px-4 py-4">
+      <div key={tab} className="relative flex-1 overflow-y-auto px-4 py-4">
         {tab === 'shape' && <ShapeTab {...props} />}
         {tab === 'facade' && <FacadeTab {...props} />}
         {tab === 'openings' && <OpeningsTab {...props} />}
@@ -260,8 +266,11 @@ export function ControlPanel(props) {
 
 /* ---------- Objekat ---------- */
 
-function ShapeTab({ scene, onDimensionChange, onSceneChange, onRoofChange, onSettle }) {
+function ShapeTab({ scene, estimate, onDimensionChange, onSceneChange, onRoofChange, onPartChange, onSettle }) {
   const { dimensions, roof } = scene
+  const site = scene.site || DEFAULT_SITE
+  const skylights = scene.skylights || DEFAULT_SKYLIGHTS
+  const units = scene.units || 1
   const roofShape = roofGeometry(dimensions, roof)
   const footprint = dimensions.width * dimensions.length
   const { sizes } = buildingType(scene.buildingType)
@@ -342,7 +351,7 @@ function ShapeTab({ scene, onDimensionChange, onSceneChange, onRoofChange, onSet
           )
         })}
         <div className="grid grid-cols-2 gap-2">
-          <Stat label="Površina" value={`${footprint.toFixed(1).replace('.', ',')} m²`} />
+          <Stat label="Površina" value={`${(footprint * units).toFixed(1).replace('.', ',')} m²`} />
           <Stat label={roof.kind === 'flat' ? 'Visina' : 'Do slemena'} value={formatMeters(dimensions.height + roofShape.rise)} />
         </div>
         {oversized && (
@@ -351,6 +360,53 @@ function ShapeTab({ scene, onDimensionChange, onSceneChange, onRoofChange, onSet
             Za ove mere statičar treba da odredi konstrukciju.
           </p>
         )}
+        <Slider
+          label="Objekata u nizu"
+          value={units}
+          {...UNIT_LIMITS}
+          formatValue={(value) => (value > 1 ? `${value} jedinice` : 'Jedan objekat')}
+          onChange={(next) => onPartChange('units', { units: next })}
+          onSettle={onSettle}
+        />
+        {units > 1 && <Hint>Iste jedinice se ređaju bok uz bok, kao garaže u nizu. Mere iznad važe za jednu jedinicu.</Hint>}
+      </Section>
+
+      <Section icon={MapPin} title="Lokacija">
+        <label className="block">
+          <span className="mb-1.5 block text-sm text-stone-700">Mesto</span>
+          <select
+            value={site.place}
+            onChange={(event) => {
+              const place = PLACES.find((entry) => entry.id === event.target.value)
+              onSceneChange({ site: { ...site, place: place ? place.id : 'custom', altitude: place ? place.altitude : site.altitude } })
+            }}
+            className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-900"
+          >
+            {PLACES.map((place) => (
+              <option key={place.id} value={place.id}>
+                {place.name} · {place.altitude} m
+              </option>
+            ))}
+            <option value="custom">Druga lokacija</option>
+          </select>
+        </label>
+        <Slider
+          label="Nadmorska visina"
+          value={site.altitude}
+          {...ALTITUDE_LIMITS}
+          formatValue={(value) => `${value} m`}
+          onChange={(altitude) => onPartChange('site', { altitude, place: PLACES.find((entry) => entry.id === site.place)?.altitude === altitude ? site.place : 'custom' })}
+          onSettle={onSettle}
+        />
+        <Segmented label="Vetar" value={site.wind} options={WIND_OPTIONS} onChange={(wind) => onSceneChange({ site: { ...site, wind } })} columns={3} />
+        <div className="grid grid-cols-2 gap-2">
+          <Stat label="Sneg na krovu" value={`${String(snowLoad(site)).replace('.', ',')} kN/m²`} />
+          <Stat label={estimate.sizing.truss ? 'Pojas rešetke' : 'Krovni nosač'} value={`${Math.round((estimate.sizing.truss ? estimate.sizing.chord.use : estimate.sizing.rafter.use) * 100)}% iskorišćen`} />
+        </div>
+        <Hint>
+          Presek nosača prati sneg i raspon: {estimate.profiles.rafter.name} preko {estimate.sizing.span.toFixed(2).replace('.', ',')} m. Vrednosti su okvirne; merodavan je proračun statičara po
+          SRPS EN 1991.
+        </Hint>
       </Section>
 
       <Section icon={Layers} title="Krov">
@@ -388,6 +444,27 @@ function ShapeTab({ scene, onDimensionChange, onSceneChange, onRoofChange, onSet
         {roof.kind === 'duo' && (
           <Segmented label="Slemen" value={roof.ridge} options={ROOF_RIDGES} onChange={(ridge) => onRoofChange({ ridge })} />
         )}
+        <Toggle
+          label="Rešetkasti nosač"
+          detail="Za veće raspone: lakši i jači od pune kutije, stoji na 2 m."
+          checked={Boolean(roof.truss)}
+          onChange={(truss) => onRoofChange({ truss })}
+        />
+        {!estimate.sizing.ok && !roof.truss && (
+          <p className="flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
+            Raspon je prevelik za kutijasti nosač. Uključi rešetku.
+          </p>
+        )}
+        <Segmented label="Krovni prozori" value={skylights.kind} options={SKYLIGHT_KINDS} onChange={(kind) => onSceneChange({ skylights: { ...skylights, kind } })} />
+        <Slider
+          label="Broj krovnih prozora"
+          value={skylights.count}
+          {...SKYLIGHT_LIMITS}
+          formatValue={(value) => (value > 0 ? String(value) : 'Bez')}
+          onChange={(count) => onPartChange('skylights', { count })}
+          onSettle={onSettle}
+        />
         <Toggle
           label="Oluk na strehi"
           detail="Upit limaru za oluk ide posebno."
@@ -814,14 +891,18 @@ function InteriorTab({
   onAddCar,
   onChangeCar,
   onRemoveCar,
+  onAddRoom,
+  onChangeRoom,
   onRemove,
 }) {
   const { dimensions, furniture, car } = scene
+  const rooms = scene.rooms || []
   const selectedFurniture = furniture.find((item) => selected?.kind === 'furniture' && item.id === selected.id)
+  const selectedRoom = rooms.find((item) => selected?.kind === 'room' && item.id === selected.id)
   return (
     <div className="space-y-6">
       <Section icon={Layers} title="Pod">
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-7 gap-1.5">
           {FLOOR_FINISHES.map((finish) => {
             const active = (scene.floor || 'beton') === finish.id
             return (
@@ -865,6 +946,78 @@ function InteriorTab({
         <Hint>Sendvič paneli su već izolovani, pa se za njih vuna ne računa.</Hint>
       </Section>
 
+      <Section icon={DoorClosed} title="Prostorije">
+        <div className="grid grid-cols-2 gap-1.5">
+          {ROOM_KINDS.map((kind) => (
+            <button
+              key={kind.id}
+              type="button"
+              disabled={rooms.length >= MAX_ROOMS}
+              aria-label={`Dodaj prostoriju: ${kind.name}`}
+              onClick={() => onAddRoom(kind.id)}
+              className="rounded-lg border border-stone-200 bg-white px-2 py-2 text-left transition hover:border-stone-400 disabled:opacity-40 disabled:hover:border-stone-200"
+            >
+              <span className="flex items-center gap-1 text-xs font-medium text-stone-900">
+                <Plus size={12} className="text-orange-500" />
+                {kind.name}
+              </span>
+              <span className="block text-[10px] text-stone-500">{kind.detail}</span>
+            </button>
+          ))}
+        </div>
+        <ItemList
+          items={rooms}
+          selectedId={selectedRoom?.id}
+          onSelect={(id) => onSelect({ kind: 'room', id })}
+          onRemove={(id) => onRemove({ kind: 'room', id })}
+          labelFor={(item) => `${roomKind(item.kind).name} ${fmtSize(item.width, item.depth)} · ${ROOM_CORNERS.find((entry) => entry.id === item.corner)?.name.toLowerCase()}`}
+        />
+        {selectedRoom && (
+          <Editor>
+            <Segmented
+              label="Namena"
+              value={selectedRoom.kind}
+              options={ROOM_KINDS}
+              onChange={(kind) => onChangeRoom(selectedRoom.id, { kind })}
+              columns={2}
+            />
+            <Segmented label="Ugao" value={selectedRoom.corner} options={ROOM_CORNERS} onChange={(corner) => onChangeRoom(selectedRoom.id, { corner })} columns={2} />
+            <Slider label="Širina" value={selectedRoom.width} {...roomLimits(dimensions).width} onChange={(width) => onChangeRoom(selectedRoom.id, { width })} onSettle={onSettle} />
+            <Slider label="Dubina" value={selectedRoom.depth} {...roomLimits(dimensions).depth} onChange={(depth) => onChangeRoom(selectedRoom.id, { depth })} onSettle={onSettle} />
+            <Toggle
+              label="Galerija iznad"
+              detail="Pod, ograda i stepenice na plafonu prostorije."
+              checked={Boolean(selectedRoom.loft)}
+              onChange={(loft) => onChangeRoom(selectedRoom.id, { loft })}
+            />
+            <Segmented
+              label="Vrata gledaju"
+              value={selectedRoom.doorSide}
+              options={[
+                { id: 'depth', name: 'Napred / nazad' },
+                { id: 'side', name: 'Levo / desno' },
+              ]}
+              onChange={(doorSide) => onChangeRoom(selectedRoom.id, { doorSide })}
+            />
+            <Slider
+              label="Položaj vrata"
+              value={selectedRoom.doorOffset}
+              min={0.15}
+              max={0.85}
+              step={0.05}
+              formatValue={(value) => `${Math.round(value * 100)}%`}
+              onChange={(doorOffset) => onChangeRoom(selectedRoom.id, { doorOffset })}
+              onSettle={onSettle}
+            />
+            <SoftButton icon={Trash2} label="Ukloni" onClick={() => onRemove({ kind: 'room', id: selectedRoom.id })} />
+          </Editor>
+        )}
+        <Hint>
+          Prostorija stoji u uglu: dva zida su spoljni, dva su pregradni panel. Uključi „Bez krova” iznad prikaza da vidiš raspored. Šolju, lavabo, kotao i sto
+          dodaješ iz inventara.
+        </Hint>
+      </Section>
+
       <Section icon={Sofa} title="Inventar">
         {FURNITURE_GROUPS.map((group) => (
           <div key={group}>
@@ -906,7 +1059,7 @@ function InteriorTab({
       </Section>
 
       <Section icon={CarFront} title="Vozilo">
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="grid grid-cols-3 gap-1.5">
           {CAR_PRESETS.map((preset) => (
             <button
               key={preset.id}
@@ -943,7 +1096,7 @@ function InteriorTab({
             </div>
           </Editor>
         ) : (
-          <Hint>Vozilo je rekvizit za osećaj prostora. Izaberi tip i prevuci ga po podu.</Hint>
+          <Hint>Vozilo je rekvizit za osećaj prostora. Izaberi tip i prevuci ga po podu. Stavi ga iznad dizalice i podigni da proveriš visinu.</Hint>
         )}
       </Section>
     </div>
@@ -977,6 +1130,14 @@ function CarSliders({ item, dimensions, onChange, onSettle }) {
       <Slider label="Visina" value={item.height} {...limits.height} onChange={(height) => onChange({ height })} onSettle={onSettle} />
       <Slider label="Levo / desno" value={item.x} {...limits.x} onChange={(x) => onChange({ x })} onSettle={onSettle} />
       <Slider label="Napred / nazad" value={item.z} {...limits.z} onChange={(z) => onChange({ z })} onSettle={onSettle} />
+      <Slider
+        label="Podignut na dizalici"
+        value={item.elevation || 0}
+        {...limits.elevation}
+        formatValue={(value) => (value > 0 ? formatMeters(value) : 'Na podu')}
+        onChange={(elevation) => onChange({ elevation })}
+        onSettle={onSettle}
+      />
     </>
   )
 }
@@ -1011,6 +1172,22 @@ function ExtrasTab({ scene, onSceneChange, onElectricChange, onCanopyChange, onS
               step={CANOPY_LIMITS.length.step}
               onChange={(length) => onCanopyChange({ length })}
               onSettle={onSettle}
+            />
+            <Slider
+              label="Pomak duž zida"
+              value={canopy.offset || 0}
+              min={-1}
+              max={1}
+              step={0.05}
+              formatValue={(value) => (value === 0 ? 'Na sredini' : value < 0 ? 'Ka jednom kraju' : 'Ka drugom kraju')}
+              onChange={(offset) => onCanopyChange({ offset })}
+              onSettle={onSettle}
+            />
+            <Toggle
+              label="Zatvoren aneks"
+              detail="Tri zida i vrata: ostava ili kotlarnica uz objekat, tlocrt u obliku slova L."
+              checked={Boolean(canopy.closed)}
+              onChange={(closed) => onCanopyChange({ closed })}
             />
             <Hint>
               Površina {canopyArea.toFixed(1).replace('.', ',')} m².{' '}
@@ -1071,6 +1248,7 @@ function ExtrasTab({ scene, onSceneChange, onElectricChange, onCanopyChange, onS
               {electric.charger === 'charger' && (electric.phase === 'three' ? 'Na trofaznom priključku računa se punjač od 11 kW.' : 'Na monofaznom priključku računa se punjač od 7,4 kW.')}
               {electric.charger === 'none' && 'Instalaciju izvodi i proverava električar.'}
             </Hint>
+            <Hint>Svetiljke, utičnice, prekidač, tabla i kanalice vide se u prikazu. Raspored je predlog: utičnice su na 1,15 m, ravnomerno po slobodnim zidovima.</Hint>
           </>
         )}
       </Section>
@@ -1195,6 +1373,14 @@ function EstimateTab({ scene, estimate, quote, total, partners, onSceneChange })
         <SoftButton icon={copied ? Check : ClipboardCopy} label={copied ? 'Kopirano' : 'Kopiraj spisak'} onClick={copyList} />
         <SoftButton icon={Send} label="Crteži i upit" onClick={() => navigate('/majstori')} />
       </div>
+      <button
+        type="button"
+        onClick={() => navigate('/ponuda')}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-stone-900 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
+      >
+        <FileText size={15} />
+        Ponuda za štampu i PDF
+      </button>
 
       <OffersSection scene={scene} estimate={estimate} partners={partners} onSceneChange={onSceneChange} />
 

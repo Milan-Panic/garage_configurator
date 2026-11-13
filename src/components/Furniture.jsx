@@ -1,10 +1,31 @@
 import * as THREE from 'three'
 import { FLOOR_LEVEL } from '../config'
 import { usePlaneDrag } from './drag'
+import {
+  BarrelsModel,
+  BasinModel,
+  BoilerModel,
+  ChairModel,
+  CompressorModel,
+  DeskModel,
+  DrillPressModel,
+  ExtinguisherModel,
+  LadderModel,
+  Lift2Model,
+  Lift4Model,
+  PalletModel,
+  PalletRackModel,
+  SofaModel,
+  StoveModel,
+  ToiletModel,
+  WaterHeaterModel,
+  WelderModel,
+} from './FurnitureExtra'
+import { Box, Cyl } from './parts'
 
 const FLOOR_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), -FLOOR_LEVEL)
 
-export function FurniturePiece({ item, selected, onSelect, onChange, onGestureEnd }) {
+export function FurniturePiece({ item, selected, clash = false, raise = 0, onSelect, onChange, onGestureEnd }) {
   function handleDrag(point, start, extra) {
     onChange({
       x: extra.x + (point.x - start.x),
@@ -29,11 +50,11 @@ export function FurniturePiece({ item, selected, onSelect, onChange, onGestureEn
           startDrag(event, FLOOR_PLANE, { x: item.x, z: item.z })
         }}
       >
-        <FurnitureModel type={item.type} width={item.width} depth={item.depth} height={item.height} />
-        {selected && (
+        <FurnitureModel type={item.type} width={item.width} depth={item.depth} height={item.height} raise={raise} />
+        {(selected || clash) && (
           <mesh position={[0, item.height / 2, 0]}>
             <boxGeometry args={[item.width + 0.06, item.height + 0.04, item.depth + 0.06]} />
-            <meshBasicMaterial color="#f97316" wireframe />
+            <meshBasicMaterial color={clash ? '#dc2626' : '#f97316'} wireframe />
           </mesh>
         )}
       </group>
@@ -57,11 +78,29 @@ const MODELS = {
   sink: SinkModel,
   washer: WasherModel,
   firewood: FirewoodModel,
+  lift2: Lift2Model,
+  lift4: Lift4Model,
+  compressor: CompressorModel,
+  welder: WelderModel,
+  drillpress: DrillPressModel,
+  barrels: BarrelsModel,
+  palletrack: PalletRackModel,
+  pallet: PalletModel,
+  ladder: LadderModel,
+  extinguisher: ExtinguisherModel,
+  desk: DeskModel,
+  chair: ChairModel,
+  sofa: SofaModel,
+  toilet: ToiletModel,
+  basin: BasinModel,
+  waterheater: WaterHeaterModel,
+  boiler: BoilerModel,
+  stove: StoveModel,
 }
 
-export function FurnitureModel({ type, width, depth, height }) {
+export function FurnitureModel({ type, width, depth, height, raise = 0 }) {
   const Model = MODELS[type] ?? CabinetModel
-  return <Model width={width} depth={depth} height={height} />
+  return <Model width={width} depth={depth} height={height} raise={raise} />
 }
 
 function LockerModel({ width, depth, height }) {
@@ -274,10 +313,14 @@ function FirewoodModel({ width, depth, height }) {
           if (x > width / 2 - log / 2) return null
           const tone = 0.85 + ((row * 7 + col * 13) % 10) / 40
           return (
-            <mesh key={`${row}-${col}`} position={[x, log / 2 + row * log * 0.92, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-              <cylinderGeometry args={[log / 2, log / 2, depth, 7]} />
-              <meshStandardMaterial color={`rgb(${Math.round(150 * tone)}, ${Math.round(104 * tone)}, ${Math.round(64 * tone)})`} roughness={0.95} />
-            </mesh>
+            <Cyl
+              key={`${row}-${col}`}
+              position={[x, log / 2 + row * log * 0.92, 0]}
+              size={[log, depth]}
+              axis="z"
+              color={`rgb(${Math.round(150 * tone)}, ${Math.round(104 * tone)}, ${Math.round(64 * tone)})`}
+              roughness={0.95}
+            />
           )
         }),
       )}
@@ -400,14 +443,5 @@ function CabinetModel({ width, depth, height }) {
       <Box position={[-width * 0.18, height * 0.48, depth / 2]} size={[0.09, 0.02, 0.03]} color="#d8d2c8" metalness={0.4} />
       <Box position={[width * 0.18, height * 0.48, depth / 2]} size={[0.09, 0.02, 0.03]} color="#d8d2c8" metalness={0.4} />
     </group>
-  )
-}
-
-function Box({ position, size, color, roughness = 0.6, metalness = 0.04, rotation }) {
-  return (
-    <mesh position={position} rotation={rotation} castShadow receiveShadow>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color={color} roughness={roughness} metalness={metalness} />
-    </mesh>
   )
 }
