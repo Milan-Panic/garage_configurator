@@ -33,6 +33,10 @@ const painters = {
   flake: paintFlake,
   'floor-tiles': paintFloorTiles,
   ceramic: paintCeramic,
+  'facade-cassette': paintFacadeCassette,
+  'composite-panel': paintCompositePanel,
+  polycarbonate: paintPolycarbonate,
+  'fiber-cement': paintFiberCement,
 }
 
 export function createTileCanvas(spec) {
@@ -599,6 +603,82 @@ function paintFloorTiles(ctx, w, h, spec) {
 
 function paintCeramic(ctx, w, h, spec) {
   paintCourses(ctx, w, h, spec, 2, 2, false)
+}
+
+// Metalne kasete: svaka ploča ima senku fuge i blag prelom svetla po ivici.
+function paintFacadeCassette(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  const joint = Math.max(3, Math.round(w / 60))
+  ctx.fillStyle = rgb(shade(base, 0.35))
+  ctx.fillRect(0, 0, w, h)
+  const gradient = ctx.createLinearGradient(0, 0, w, h)
+  gradient.addColorStop(0, rgb(shade(base, 1.07)))
+  gradient.addColorStop(1, rgb(shade(base, 0.94)))
+  ctx.fillStyle = gradient
+  ctx.fillRect(joint, joint, w - joint * 2, h - joint * 2)
+  ctx.fillStyle = rgb(shade(base, 1.3))
+  ctx.fillRect(joint, joint, w - joint * 2, 1)
+  ctx.fillRect(joint, joint, 1, h - joint * 2)
+  ctx.fillStyle = rgb(shade(base, 0.75))
+  ctx.fillRect(joint, h - joint - 1, w - joint * 2, 1)
+  ctx.fillRect(w - joint - 1, joint, 1, h - joint * 2)
+}
+
+// Aluminijumski kompozit: velike glatke ploče sa tankom tamnom fugom.
+function paintCompositePanel(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  const gradient = ctx.createLinearGradient(0, 0, w, 0)
+  gradient.addColorStop(0, rgb(shade(base, 0.97)))
+  gradient.addColorStop(0.45, rgb(shade(base, 1.08)))
+  gradient.addColorStop(1, rgb(shade(base, 0.98)))
+  ctx.fillStyle = gradient
+  ctx.fillRect(0, 0, w, h)
+  ctx.fillStyle = rgb(shade(base, 0.3))
+  ctx.fillRect(0, 0, 2, h)
+  ctx.fillRect(0, 0, w, 2)
+}
+
+// Komorni polikarbonat: gusta vertikalna rebra i mlečni sjaj.
+function paintPolycarbonate(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(base)
+  ctx.fillRect(0, 0, w, h)
+  const rib = Math.max(4, Math.round(w / 14))
+  for (let x = 0; x < w; x += rib) {
+    ctx.fillStyle = rgb(shade(base, 0.86))
+    ctx.fillRect(x, 0, 1, h)
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'
+    ctx.fillRect(x + 1, 0, Math.max(1, Math.round(rib / 3)), h)
+  }
+}
+
+// Vlaknocement: mat ploča sa finim zrnom, fugom i redom šrafova.
+function paintFiberCement(ctx, w, h, spec) {
+  const base = hexToRgb(spec.color)
+  ctx.fillStyle = rgb(base)
+  ctx.fillRect(0, 0, w, h)
+  for (let i = 0; i < 900; i += 1) {
+    ctx.fillStyle = hash(i, 9) > 0.5 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)'
+    ctx.fillRect(Math.floor(hash(i, 3) * w), Math.floor(hash(i, 5) * h), 2, 2)
+  }
+  ctx.fillStyle = rgb(shade(base, 0.4))
+  ctx.fillRect(0, 0, 3, h)
+  ctx.fillRect(0, 0, w, 3)
+  ctx.fillStyle = rgb(shade(base, 0.55))
+  const inset = Math.round(w * 0.06)
+  const spots = [
+    [inset, inset],
+    [w - inset, inset],
+    [inset, h / 2],
+    [w - inset, h / 2],
+    [inset, h - inset],
+    [w - inset, h - inset],
+  ]
+  spots.forEach(([x, y]) => {
+    ctx.beginPath()
+    ctx.arc(x, y, 2.2, 0, Math.PI * 2)
+    ctx.fill()
+  })
 }
 
 function grainFill(ctx, w, h, alpha) {

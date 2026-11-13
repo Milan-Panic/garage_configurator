@@ -23,7 +23,7 @@ export const VENTILATION_OPTIONS = [
   { id: 'fan', name: 'Ventilator', detail: 'Zidni ventilator, traži struju' },
 ]
 
-export const DEFAULT_CANOPY = { enabled: false, wall: 'left', depth: 2.5, length: 5 }
+export const DEFAULT_CANOPY = { enabled: false, wall: 'left', depth: 2.5, length: 5, closed: false, offset: 0 }
 
 export const CANOPY_LIMITS = {
   depth: { min: 1, max: 6, step: 0.1 },
@@ -95,6 +95,19 @@ export function canopySpan(canopy, dimensions) {
   return Math.min(canopy.length, wall)
 }
 
+// Pomak nadstrešnice duž zida u metrima: −1 je jedan kraj zida, 1 drugi.
+export function canopyShift(canopy, dimensions) {
+  const wall = canopy.wall === 'front' || canopy.wall === 'back' ? dimensions.width : dimensions.length
+  return ((canopy.offset || 0) * (wall - canopySpan(canopy, dimensions))) / 2
+}
+
+export const UNIT_LIMITS = { min: 1, max: 6, step: 1 }
+
+export function normalizeUnits(raw) {
+  const number = Math.round(Number(raw))
+  return Number.isFinite(number) ? Math.min(UNIT_LIMITS.max, Math.max(UNIT_LIMITS.min, number)) : 1
+}
+
 export function normalizeCanopy(raw) {
   const source = raw && typeof raw === 'object' ? raw : {}
   const limited = (key) => {
@@ -108,6 +121,8 @@ export function normalizeCanopy(raw) {
     wall: ['front', 'back', 'left', 'right'].includes(source.wall) ? source.wall : DEFAULT_CANOPY.wall,
     depth: limited('depth'),
     length: limited('length'),
+    closed: Boolean(source.closed),
+    offset: Math.min(1, Math.max(-1, Math.round((Number(source.offset) || 0) * 20) / 20)),
   }
 }
 

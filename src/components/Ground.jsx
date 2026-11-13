@@ -1,7 +1,7 @@
 import { Grid } from '@react-three/drei'
 import { FLOOR_LEVEL } from '../config'
 
-export function Ground({ width, length, onClear }) {
+export function Ground({ width, length, onClear, plain = false }) {
   const apronFront = 2
   const apronBack = 0.7
   const apronSide = 0.7
@@ -12,19 +12,21 @@ export function Ground({ width, length, onClear }) {
 
   return (
     <group>
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        position={[0, 0, 0]}
-        receiveShadow
-        onPointerDown={(event) => {
-          event.stopPropagation()
-          onClear?.()
-        }}
-      >
-        <planeGeometry args={[yard, yard]} />
-        <meshStandardMaterial color="#a9b293" roughness={1} metalness={0} />
-      </mesh>
-      <Grid
+      {!plain && (
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, 0, 0]}
+          receiveShadow
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            onClear?.()
+          }}
+        >
+          <planeGeometry args={[yard, yard]} />
+          <meshStandardMaterial color="#a9b293" roughness={1} metalness={0} />
+        </mesh>
+      )}
+      {!plain && <Grid
         position={[0, 0.004, 0]}
         args={[yard, yard]}
         cellSize={1}
@@ -37,7 +39,7 @@ export function Ground({ width, length, onClear }) {
         fadeStrength={1.4}
         infiniteGrid={false}
         raycast={() => null}
-      />
+      />}
       <mesh position={[0, -0.04, padZ]} receiveShadow>
         <boxGeometry args={[padWidth + 0.5, 0.16, padLength + 0.5]} />
         <meshStandardMaterial color="#8a8a86" roughness={0.96} metalness={0.02} />

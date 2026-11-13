@@ -9,7 +9,7 @@ export const WINDOW_TYPES = [
   { id: 'glassblock', name: 'Staklena prizma', detail: 'Zidana, ne otvara se', addLabel: 'Dodaj staklene prizme', width: 0.8, height: 0.8, sill: 1.2 },
 ]
 
-export const FURNITURE_GROUPS = ['Radni prostor', 'Odlaganje', 'Vozila i bašta', 'Kućna tehnika']
+export const FURNITURE_GROUPS = ['Radni prostor', 'Servis', 'Odlaganje', 'Vozila i bašta', 'Kućna tehnika', 'Kancelarija i odmor', 'Sanitarije i grejanje']
 
 export const FURNITURE_TYPES = [
   {
@@ -177,6 +177,204 @@ export const FURNITURE_TYPES = [
     depthRange: [0.3, 0.6],
     heightRange: [0.5, 1.8],
   },
+  {
+    id: 'lift2',
+    name: 'Dvostubna dizalica',
+    addLabel: 'Dodaj dvostubnu dizalicu',
+    width: 3.4,
+    depth: 1.6,
+    height: 2.9,
+    widthRange: [3.2, 3.8],
+    depthRange: [1.4, 2],
+    heightRange: [2.6, 4],
+  },
+  {
+    id: 'lift4',
+    name: 'Četvorostubna dizalica',
+    addLabel: 'Dodaj četvorostubnu dizalicu',
+    width: 3,
+    depth: 5,
+    height: 2.2,
+    widthRange: [2.8, 3.4],
+    depthRange: [4.4, 5.6],
+    heightRange: [2, 2.6],
+  },
+  {
+    id: 'compressor',
+    name: 'Kompresor',
+    addLabel: 'Dodaj kompresor',
+    width: 0.5,
+    depth: 1.1,
+    height: 0.9,
+    widthRange: [0.4, 0.7],
+    depthRange: [0.8, 1.6],
+    heightRange: [0.7, 1.2],
+  },
+  {
+    id: 'welder',
+    name: 'Aparat za varenje',
+    addLabel: 'Dodaj aparat za varenje',
+    width: 0.45,
+    depth: 0.8,
+    height: 0.85,
+    widthRange: [0.4, 0.6],
+    depthRange: [0.6, 1],
+    heightRange: [0.7, 1],
+  },
+  {
+    id: 'drillpress',
+    name: 'Stubna bušilica',
+    addLabel: 'Dodaj stubnu bušilicu',
+    width: 0.45,
+    depth: 0.6,
+    height: 1.65,
+    widthRange: [0.4, 0.6],
+    depthRange: [0.5, 0.8],
+    heightRange: [1.5, 1.8],
+  },
+  {
+    id: 'barrels',
+    name: 'Burad',
+    addLabel: 'Dodaj burad',
+    width: 1.25,
+    depth: 0.6,
+    height: 0.9,
+    widthRange: [0.6, 2.5],
+    depthRange: [0.6, 0.6],
+    heightRange: [0.85, 0.95],
+  },
+  {
+    id: 'palletrack',
+    name: 'Paletni regal',
+    addLabel: 'Dodaj paletni regal',
+    width: 2.8,
+    depth: 1.1,
+    height: 3,
+    widthRange: [1.9, 3.7],
+    depthRange: [0.9, 1.2],
+    heightRange: [2, 4.2],
+  },
+  {
+    id: 'pallet',
+    name: 'Paleta sa robom',
+    addLabel: 'Dodaj paletu sa robom',
+    width: 1.2,
+    depth: 0.8,
+    height: 1.1,
+    widthRange: [1.2, 1.2],
+    depthRange: [0.8, 1],
+    heightRange: [0.5, 1.8],
+  },
+  {
+    id: 'ladder',
+    name: 'Merdevine',
+    addLabel: 'Dodaj merdevine',
+    width: 0.5,
+    depth: 0.7,
+    height: 2.2,
+    widthRange: [0.4, 0.6],
+    depthRange: [0.5, 1],
+    heightRange: [1.6, 3],
+  },
+  {
+    id: 'extinguisher',
+    name: 'PP aparat',
+    addLabel: 'Dodaj protivpožarni aparat',
+    width: 0.2,
+    depth: 0.2,
+    height: 0.6,
+    widthRange: [0.2, 0.2],
+    depthRange: [0.2, 0.2],
+    heightRange: [0.5, 0.7],
+  },
+  {
+    id: 'desk',
+    name: 'Kancelarijski sto',
+    addLabel: 'Dodaj kancelarijski sto',
+    width: 1.4,
+    depth: 0.7,
+    height: 0.75,
+    widthRange: [1, 1.8],
+    depthRange: [0.6, 0.8],
+    heightRange: [0.72, 0.78],
+  },
+  {
+    id: 'chair',
+    name: 'Stolica',
+    addLabel: 'Dodaj stolicu',
+    width: 0.55,
+    depth: 0.55,
+    height: 0.95,
+    widthRange: [0.5, 0.65],
+    depthRange: [0.5, 0.65],
+    heightRange: [0.85, 1.1],
+  },
+  {
+    id: 'sofa',
+    name: 'Dvosed',
+    addLabel: 'Dodaj dvosed',
+    width: 1.6,
+    depth: 0.85,
+    height: 0.8,
+    widthRange: [1.3, 2.2],
+    depthRange: [0.8, 0.95],
+    heightRange: [0.75, 0.9],
+  },
+  {
+    id: 'toilet',
+    name: 'WC šolja',
+    addLabel: 'Dodaj WC šolju',
+    width: 0.4,
+    depth: 0.68,
+    height: 0.8,
+    widthRange: [0.38, 0.42],
+    depthRange: [0.65, 0.72],
+    heightRange: [0.78, 0.82],
+  },
+  {
+    id: 'basin',
+    name: 'Lavabo',
+    addLabel: 'Dodaj lavabo',
+    width: 0.5,
+    depth: 0.42,
+    height: 0.85,
+    widthRange: [0.4, 0.7],
+    depthRange: [0.35, 0.5],
+    heightRange: [0.82, 0.9],
+  },
+  {
+    id: 'waterheater',
+    name: 'Bojler',
+    addLabel: 'Dodaj bojler',
+    width: 0.45,
+    depth: 0.48,
+    height: 1.9,
+    widthRange: [0.4, 0.5],
+    depthRange: [0.45, 0.52],
+    heightRange: [1.6, 2.1],
+  },
+  {
+    id: 'boiler',
+    name: 'Kotao',
+    addLabel: 'Dodaj kotao',
+    width: 0.6,
+    depth: 0.8,
+    height: 1.3,
+    widthRange: [0.5, 0.8],
+    depthRange: [0.6, 1.1],
+    heightRange: [1.1, 1.6],
+  },
+  {
+    id: 'stove',
+    name: 'Peć na drva',
+    addLabel: 'Dodaj peć na drva',
+    width: 0.5,
+    depth: 0.5,
+    height: 0.9,
+    widthRange: [0.4, 0.7],
+    depthRange: [0.4, 0.7],
+    heightRange: [0.7, 1.1],
+  },
 ]
 
 const FURNITURE_GROUP_OF = {
@@ -195,6 +393,24 @@ const FURNITURE_GROUP_OF = {
   mower: 'Vozila i bašta',
   freezer: 'Kućna tehnika',
   washer: 'Kućna tehnika',
+  lift2: 'Servis',
+  lift4: 'Servis',
+  compressor: 'Servis',
+  welder: 'Servis',
+  drillpress: 'Servis',
+  barrels: 'Servis',
+  extinguisher: 'Servis',
+  palletrack: 'Odlaganje',
+  pallet: 'Odlaganje',
+  ladder: 'Odlaganje',
+  desk: 'Kancelarija i odmor',
+  chair: 'Kancelarija i odmor',
+  sofa: 'Kancelarija i odmor',
+  toilet: 'Sanitarije i grejanje',
+  basin: 'Sanitarije i grejanje',
+  waterheater: 'Sanitarije i grejanje',
+  boiler: 'Sanitarije i grejanje',
+  stove: 'Sanitarije i grejanje',
 }
 
 export function furnitureGroup(id) {
@@ -204,8 +420,10 @@ export function furnitureGroup(id) {
 export const CAR_PRESETS = [
   { id: 'hatch', name: 'Gradski', length: 4, width: 1.75, height: 1.48 },
   { id: 'sedan', name: 'Limuzina', length: 4.75, width: 1.83, height: 1.45 },
+  { id: 'wagon', name: 'Karavan', length: 4.7, width: 1.82, height: 1.48 },
   { id: 'suv', name: 'SUV', length: 4.65, width: 1.9, height: 1.7 },
   { id: 'van', name: 'Kombi', length: 5.1, width: 2, height: 1.98 },
+  { id: 'pickup', name: 'Pikap', length: 5.3, width: 1.9, height: 1.8 },
 ]
 
 export const CAR_COLORS = ['#1d4e89', '#b91c1c', '#e7e5e4', '#18181b', '#71717a', '#166534', '#c2410c']
@@ -402,7 +620,7 @@ export function clampFurniture(item, dimensions) {
   const width = clamp(item.width, spec.widthRange[0], Math.min(spec.widthRange[1], maxWidth))
   const depth = clamp(item.depth, spec.depthRange[0], Math.min(spec.depthRange[1], maxDepth))
   const height = clamp(item.height, spec.heightRange[0], Math.min(spec.heightRange[1], maxHeight))
-  const rotation = ((Math.round(item.rotation / (Math.PI / 2)) % 4) + 4) % 4 * (Math.PI / 2)
+  const rotation = quarterTurn(item.rotation)
   const cosine = Math.abs(Math.cos(rotation))
   const sine = Math.abs(Math.sin(rotation))
   const extentX = (width / 2) * cosine + (depth / 2) * sine
@@ -457,11 +675,23 @@ export const CAR_LIMITS = {
   height: [1.3, 2.05],
 }
 
+// Koliko auto može da se podigne na dizalici a da ne udari u krov.
+function carLiftLimit(carHeight, dimensions) {
+  return Math.max(0, Math.min(1.9, Math.floor((dimensions.height - carHeight - 0.15) * 20) / 20))
+}
+
+// Predmeti stoje pod pravim uglom; sačuvana vrednost bez rotacije znači 0.
+function quarterTurn(value) {
+  const turns = Number.isFinite(value) ? Math.round(value / (Math.PI / 2)) : 0
+  return (((turns % 4) + 4) % 4) * (Math.PI / 2)
+}
+
 export function clampCar(item, dimensions) {
   const length = clamp(item.length, CAR_LIMITS.length[0], Math.min(CAR_LIMITS.length[1], dimensions.length - 0.45))
   const width = clamp(item.width, CAR_LIMITS.width[0], Math.min(CAR_LIMITS.width[1], dimensions.width - 0.4))
   const height = clamp(item.height, CAR_LIMITS.height[0], Math.min(CAR_LIMITS.height[1], dimensions.height - 0.2))
-  const rotation = ((Math.round(item.rotation / (Math.PI / 2)) % 4) + 4) % 4 * (Math.PI / 2)
+  const elevation = clamp(item.elevation ?? 0, 0, carLiftLimit(height, dimensions))
+  const rotation = quarterTurn(item.rotation)
   const cosine = Math.abs(Math.cos(rotation))
   const sine = Math.abs(Math.sin(rotation))
   const extentX = (width / 2) * cosine + (length / 2) * sine
@@ -475,12 +705,13 @@ export function clampCar(item, dimensions) {
     item.width === width &&
     item.height === height &&
     item.rotation === rotation &&
+    item.elevation === elevation &&
     item.x === x &&
     item.z === z
   ) {
     return item
   }
-  return { ...item, length, width, height, rotation, x, z }
+  return { ...item, length, width, height, elevation, rotation, x, z }
 }
 
 export function carSliderLimits(item, dimensions) {
@@ -502,6 +733,7 @@ export function carSliderLimits(item, dimensions) {
       min: CAR_LIMITS.height[0],
       max: Math.max(CAR_LIMITS.height[0], Math.min(CAR_LIMITS.height[1], dimensions.height - 0.2)),
     },
+    elevation: { min: 0, max: carLiftLimit(clamped.height, dimensions), step: 0.05 },
     x: {
       min: -Math.max(0, dimensions.width / 2 - PANEL_THICKNESS - extentX - 0.08),
       max: Math.max(0, dimensions.width / 2 - PANEL_THICKNESS - extentX - 0.08),

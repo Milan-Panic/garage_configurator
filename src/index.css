@@ -92,3 +92,54 @@ details > summary {
 details > summary::-webkit-details-marker {
   display: none;
 }
+
+/* Ponuda za štampu: svaka strana ponude je list A4, sve ostalo se sklanja. */
+@media print {
+  /* Margina je na samoj strani ponude, da važi i kad je u dijalogu štampe izabrano „bez margina". */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html,
+  body,
+  #root,
+  .app-shell,
+  .app-shell > div,
+  .offer {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  .app-shell > header,
+  .no-print {
+    display: none !important;
+  }
+
+  .offer-page {
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 13mm 14mm !important;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    box-shadow: none !important;
+    break-after: page;
+  }
+
+  .offer-page:last-child {
+    break-after: auto;
+  }
+
+  .avoid-break,
+  .drawing-sheet {
+    break-inside: avoid;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

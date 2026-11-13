@@ -2,7 +2,10 @@ import { DEFAULT_DIMENSIONS, clampDimension } from './config'
 import { DEFAULT_MATERIALS, DOOR_MATERIALS, FLOOR_FINISHES, FRAME_COLORS, INSULATION_OPTIONS, resolveMaterials } from './materials'
 import { CAR_COLORS, CAR_PRESETS, FURNITURE_TYPES, WINDOW_TYPES, WALL_IDS, clampCar, clampDoor, clampFurniture, clampPedestrian, clampWindow, defaultDoorSize } from './layout'
 import { initialRoof, normalizeRoof } from './roof'
-import { BUILDING_TYPES, DEFAULT_CANOPY, DEFAULT_ELECTRIC, VENTILATION_OPTIONS, normalizeCanopy, normalizeElectric } from './buildings'
+import { normalizeRooms } from './rooms'
+import { BUILDING_TYPES, DEFAULT_CANOPY, DEFAULT_ELECTRIC, VENTILATION_OPTIONS, normalizeCanopy, normalizeElectric, normalizeUnits } from './buildings'
+import { DEFAULT_SITE, normalizeSite } from './site'
+import { DEFAULT_SKYLIGHTS, normalizeSkylights } from './skylights'
 
 const DOOR_STYLES = ['none', 'sectional', 'tilt', 'single', 'double', 'roller']
 
@@ -30,6 +33,10 @@ export const initialScene = {
   offers: {},
   ventilation: 'none',
   canopy: DEFAULT_CANOPY,
+  rooms: [],
+  site: DEFAULT_SITE,
+  skylights: DEFAULT_SKYLIGHTS,
+  units: 1,
 }
 
 export function scenesEqual(left, right) {
@@ -38,7 +45,7 @@ export function scenesEqual(left, right) {
 
 export function highestSerial(scene) {
   let max = 0
-  for (const item of [...scene.windows, ...scene.furniture, ...(scene.pedestrianDoors || [])]) {
+  for (const item of [...scene.windows, ...scene.furniture, ...(scene.pedestrianDoors || []), ...(scene.rooms || [])]) {
     const match = /-(\d+)$/.exec(String(item.id ?? ''))
     if (match) max = Math.max(max, Number(match[1]))
   }
@@ -113,6 +120,7 @@ export function normalizeScene(raw) {
             length: source.car.length,
             width: source.car.width,
             height: source.car.height,
+            elevation: source.car.elevation,
             x: source.car.x,
             z: source.car.z,
             rotation: source.car.rotation,
@@ -156,6 +164,10 @@ export function normalizeScene(raw) {
     offers: cleanOffers(source.offers),
     ventilation: VENTILATION_OPTIONS.some((entry) => entry.id === source.ventilation) ? source.ventilation : 'none',
     canopy: normalizeCanopy(source.canopy),
+    rooms: normalizeRooms(source.rooms, dimensions),
+    site: normalizeSite(source.site),
+    skylights: normalizeSkylights(source.skylights),
+    units: normalizeUnits(source.units),
   }
 }
 

@@ -1,12 +1,15 @@
 import { CANOPY_FREE_AREA, canopySpan } from './buildings'
+import { findCollisions } from './collide'
+import { electricLayout } from './electric'
 import { FLOOR_LEVEL, LIGHT_STRUCTURE, ROOF_OVERHANG } from './config'
 import { wallFrame } from './layout'
 import { FLOOR_FINISHES, FRAME_COLORS, ROOF_MATERIALS, WALL_MATERIALS, findMaterial } from './materials'
 import { roofGeometry, roofMetrics } from './roof'
+import { roomBlocksOpening, roomBox, roomKind } from './rooms'
+import { placeName } from './site'
+import { skylightLayout } from './skylights'
+import { POST_SPACING, TRUSS_SPAN_LIMIT, profileSet, segmentLength, structureFrame } from './structure'
 
-const POST_SPACING = 2
-const RAFTER_SPACING = 1.2
-const PURLIN_SPACING = 0.9
 const SHEET_WASTE = 1.08
 const HINGE_LIMIT = 2
 const OSB_SHEET = 2.5 * 1.25
@@ -26,39 +29,69 @@ export function buildEstimate(scene) {
   const notes = []
   const warnings = []
 
-  const columns = columnLengths(dimensions, geometry, roof, door, scene.pedestrianDoors || [])
-  const profiles = profileSet(dimensions, metrics)
+  const frame = structureFrame(scene)
+  const profiles = profileSet(dimensions, frame)
+  const sizing = frame.sizing
+  const lengthsOf = (segments) => segments.map(segmentLength)
   const section = profiles.post
-  pushCuts(lines, 'Konstrukcija', `Stubovi, ${section.name}`, columns.heights, section.priceId)
+  pushCuts(lines, 'Konstrukcija', `Stubovi, ${section.name}`, frame.posts.map((post) => post.height), section.priceId)
   notes.push(
-    `Stubovi idu na uglove i na svakih najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m. U otvor vrata ne ide međustub. Presek je uobičajen za lake montažne objekte: do 4,5 m i 2,7 m visine stub 80×80×2, preko toga 80×80×3, preko 6,5 m ili 3,2 m visine 100×100×3. Ovo nije statički proračun.`,
+    `Stubovi idu na uglove i na svakih najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m. Uz vrata stoje dovratnici, a stub koji bi pao u prozor pomeren je uz njegovu ivicu. Presek je uobičajen za lake montažne objekte: do 4,5 m i 2,7 m visine stub 80×80×2, preko toga 80×80×3, preko 6,5 m ili 3,2 m visine 100×100×3. Ovo nije statički proračun.`,
   )
 
   const plates = plateLengths(dimensions, metrics)
   pushCuts(lines, 'Konstrukcija', `Venci, ${profiles.plate.name}`, plates, profiles.plate.priceId)
-  const girtRows = Math.max(1, Math.ceil(dimensions.height / 1.2) - 1)
   const girts = []
-  for (let row = 0; row < girtRows; row += 1) girts.push(dimensions.width, dimensions.width, dimensions.length, dimensions.length)
+  for (let row = 0; row < frame.girtRows; row += 1) girts.push(dimensions.width, dimensions.width, dimensions.length, dimensions.length)
   pushCuts(lines, 'Konstrukcija', `Zidni pojasevi, ${profiles.girt.name}`, girts, profiles.girt.priceId)
+  if (frame.headers.length) {
+    pushCuts(lines, 'Konstrukcija', `Nadvratnici, ${profiles.header.name}`, lengthsOf(frame.headers), profiles.header.priceId)
+  }
 
-  if (metrics.roof.kind === 'flat') {
-    const span = metrics.slopes[0]
-    const count = Math.ceil(span.slopeLength / RAFTER_SPACING) + 1
-    pushCuts(lines, 'Konstrukcija', `Krovni nosači, ${profiles.rafter.name}`, Array.from({ length: count }, () => span.alongCover), profiles.rafter.priceId)
-    notes.push('Ravan krov nosi samo nosače, bez rogova.')
+  if (frame.truss) {
+    const bottom = frame.chords.length ? frame.chords : frame.ties
+    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, gornji pojas, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId)
+    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, donji pojas, ${profiles.tie.name}`, lengthsOf(bottom), profiles.tie.priceId)
+    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, ispuna, ${profiles.web.name}`, lengthsOf([...frame.webs, ...frame.kings]), profiles.web.priceId)
+    pushCuts(lines, 'Konstrukcija', `Rožnjače, ${profiles.purlin.name}`, lengthsOf(frame.purlins), profiles.purlin.priceId)
+    notes.push(`Rešetkasti nosači stoje na ${fmt(sizing.spacing)} m, visine ${fmt(frame.trussDepth)} m, a lim nose rožnjače. Rešetka se vari u radionici i donosi u komadu.`)
+    if (roof.kind !== 'duo') notes.push(`Donji pojas rešetke je ${fmt(frame.trussDepth)} m ispod krova, pa je toliko manja slobodna visina ispod nosača.`)
+  } else if (frame.purlins.length === 0) {
+    pushCuts(lines, 'Konstrukcija', `Krovni nosači, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId)
+    notes.push('Krovni nosači idu preko kraćeg raspona na najviše 1,2 m i sami nose lim, bez rožnjača.')
   } else {
-    const rafters = []
-    const purlins = []
-    metrics.slopes.forEach((slope) => {
-      const count = Math.ceil(slope.along / RAFTER_SPACING) + 1
-      for (let index = 0; index < count; index += 1) rafters.push(slope.slopeLength)
-      const rows = Math.ceil(slope.slopeLength / PURLIN_SPACING) + 1
-      for (let index = 0; index < rows; index += 1) purlins.push(slope.alongCover)
-    })
-    pushCuts(lines, 'Konstrukcija', `Rogovi, ${profiles.rafter.name}`, rafters, profiles.rafter.priceId)
-    pushCuts(lines, 'Konstrukcija', `Rožnjače, ${profiles.purlin.name}`, purlins, profiles.purlin.priceId)
+    pushCuts(lines, 'Konstrukcija', `Rogovi, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId)
+    pushCuts(lines, 'Konstrukcija', `Rožnjače, ${profiles.purlin.name}`, lengthsOf(frame.purlins), profiles.purlin.priceId)
     notes.push('Rogovi su na najviše 1,2 m, rožnjače na najviše 0,9 m po kosini.')
   }
+  if (!frame.truss && frame.ties.length) {
+    pushCuts(lines, 'Konstrukcija', `Zatege vezača, ${profiles.tie.name}`, lengthsOf([...frame.ties, ...frame.kings]), profiles.tie.priceId)
+    notes.push('Kod dve vode svaki par rogova ima zategu u visini venca, da krov ne gura zidove u stranu.')
+  }
+  const wallBraces = frame.braces.filter((brace) => brace.kind === 'zid')
+  const roofBraces = frame.braces.filter((brace) => brace.kind === 'krov')
+  if (wallBraces.length) pushCuts(lines, 'Konstrukcija', `Zidna ukrućenja (dijagonale), ${profiles.brace.name}`, lengthsOf(wallBraces), profiles.brace.priceId)
+  if (roofBraces.length) pushCuts(lines, 'Konstrukcija', `Krovni spregovi (dijagonale), ${profiles.brace.name}`, lengthsOf(roofBraces), profiles.brace.priceId)
+  notes.push('Dijagonale idu u krajnja polja svakog zida i u krajnja polja krova. One nose vetar; bez njih se skelet ljulja i oslanja samo na lim.')
+  if (frame.unbraced.length) {
+    const names = frame.unbraced.map((id) => wallFrame(id, dimensions).label.toLowerCase()).join(', ')
+    warnings.push(`Nema slobodnog polja za dijagonalu: ${names}. Otvori zauzimaju ceo zid, pa tu treba krut ram oko vrata ili uži otvor.`)
+  }
+  if (door.style !== 'none' && door.width > 3 && frame.bearing.includes(door.wall)) {
+    warnings.push(`Krovni nosači naležu na zid sa vratima, pa nadvratnik od ${fmt(door.width)} m nosi i krov. Treba jači nadvratnik od onog u računici ili vrata na zabatnom zidu.`)
+  }
+  const used = Math.round((frame.truss ? sizing.chord.use : sizing.rafter.use) * 100)
+  notes.push(
+    `Opterećenje: sneg ${fmt(sizing.snow)} kN/m² (${placeName(scene.site)}, ${scene.site?.altitude ?? 117} m n.v.) i ${fmt(sizing.areaLoad - sizing.snow)} kN/m² sopstvene težine. Nosač na ${fmt(sizing.spacing)} m nosi ${fmt(sizing.load)} kN/m preko ${fmt(sizing.span)} m, pa je ${profiles.rafter.name} iskorišćen ${used}%.`,
+  )
+  if (!sizing.ok) {
+    warnings.push(
+      frame.truss
+        ? `Rešetka premošćuje ${fmt(sizing.span)} m pod snegom od ${fmt(sizing.snow)} kN/m². To je preko onoga što ova računica pokriva (${TRUSS_SPAN_LIMIT} m), pa konstrukciju mora da odredi statičar.`
+        : `Krovni nosač premošćuje ${fmt(sizing.span)} m pod snegom od ${fmt(sizing.snow)} kN/m², a najjači kutijasti profil je iskorišćen ${used}%. Uključi rešetkasti nosač u delu Objekat, pod Krov.`,
+    )
+  }
+  if (sizing.wind >= 0.9) notes.push('Izložena lokacija: dodato je po jedno polje sa dijagonalom u zidovima i krovu, a stubovi su za broj jači.')
 
   if (dimensions.width > LIGHT_STRUCTURE.width || dimensions.length > LIGHT_STRUCTURE.length || dimensions.height > LIGHT_STRUCTURE.height) {
     warnings.push(`Preseci u računici važe do ${LIGHT_STRUCTURE.width} × ${LIGHT_STRUCTURE.length} m i visine ${String(LIGHT_STRUCTURE.height).replace('.', ',')} m. Za ove mere statičar mora da odredi konstrukciju, pa je cena konstrukcije samo gruba.`)
@@ -73,101 +106,137 @@ export function buildEstimate(scene) {
   pushDoor(lines, notes, warnings, dimensions, door)
   pushWindows(lines, windows)
   pushPedestrian(lines, scene.pedestrianDoors || [])
-  pushFasteners(lines, wallNet + metrics.area, columns.heights.length)
+  pushSkylights(lines, notes, warnings, scene)
+  pushRooms(lines, notes, warnings, scene)
+  pushLofts(lines, notes, warnings, scene, geometry)
+  pushFasteners(lines, wallNet + metrics.area, frame.posts.length)
   pushElectric(lines, notes, warnings, scene)
   pushSolar(lines, warnings, scene, metrics)
   pushCanopy(lines, warnings, scene)
   pushVentilation(lines, notes, warnings, scene)
+  pushEquipmentNotes(notes, warnings, scene)
+  const clashes = findCollisions(scene).size
+  if (clashes) warnings.push(`${clashes} ${clashes === 1 ? 'predmet stoji' : 'predmeta stoje'} jedan u drugom ili u pregradi. U prikazu su crveni; razmakni ih.`)
 
   notes.push('Betonska ploča, oluk i vrata su posebni poslovi. Količine nisu statički proračun, a cene na strani Cene su orijentacione.')
-  const tagged = lines.map((entry) => ({ ...entry, skill: entry.skill || skillFor(entry) }))
+  const tagged = applyUnits(lines, notes, scene).map((entry) => ({ ...entry, skill: entry.skill || skillFor(entry) }))
   const segments = {}
   tagged.forEach((entry) => {
     if (!segments[entry.skill]) segments[entry.skill] = []
     segments[entry.skill].push(entry)
   })
-  return { lines: tagged, notes, warnings, segments }
+  return { lines: tagged, notes, warnings, segments, sizing, profiles }
 }
 
-function columnLengths(dimensions, geometry, roof, door, pedestrianDoors = []) {
-  const { width, length } = dimensions
-  const heights = []
-  const posts = []
-  const heightAt = (x, z) => roundCut(geometry.underside(x, z) - FLOOR_LEVEL)
-  const corners = [
-    [-width / 2, length / 2],
-    [width / 2, length / 2],
-    [-width / 2, -length / 2],
-    [width / 2, -length / 2],
-  ]
-  corners.forEach(([x, z]) => {
-    const height = heightAt(x, z)
-    heights.push(height)
-    posts.push({ x, z, height, role: 'ugao' })
+function pushSkylights(lines, notes, warnings, scene) {
+  const layout = skylightLayout(scene.dimensions, scene.roof, scene.skylights)
+  if (layout.items.length === 0) return
+  if (layout.kind === 'kupola') {
+    lines.push(line('Krov', 'Svetlosna kupola 1 × 1 m', layout.items.length, 'kom', 'sa podnožjem i opšivkom', { priceId: 'skylight-dome', once: true }))
+  } else {
+    lines.push(line('Krov', 'Svetlosna traka', round1(layout.area), 'm²', `${layout.items.length} traka širine do 1 m, niz krov`, { priceId: 'skylight-strip-m2', once: true }))
+  }
+  notes.push('Krovni prozori staju između nosača. Oko svakog ide izmena u rožnjačama i opšivka, što radi limar.')
+  if (scene.roof.kind === 'flat') warnings.push('Krovni prozor na ravnom krovu je najčešće mesto prokišnjavanja. Traži podignuto podnožje od bar 15 cm.')
+  if ((scene.electric?.solar || 0) > 0) notes.push('Solarni paneli i krovni prozori dele isti krov. Raspored panela u prikazu ne zaobilazi prozore.')
+}
+
+// Galerija iznad prostorije: nosači na 50 cm, OSB, ograda i stepenice.
+function pushLofts(lines, notes, warnings, scene, geometry) {
+  const lofts = (scene.rooms || []).filter((room) => room.loft)
+  if (lofts.length === 0) return
+  const joists = []
+  let deck = 0
+  let railing = 0
+  lofts.forEach((room) => {
+    const box = roomBox(room, scene.dimensions)
+    const count = Math.ceil(room.width / 0.5) + 1
+    for (let index = 0; index < count; index += 1) joists.push(room.depth)
+    deck += room.width * room.depth
+    railing += room.width + room.depth
+    const clear = geometry.underside(box.centerX, box.centerZ) - (box.floor + box.height + 0.15)
+    if (clear < 1.2) warnings.push(`Iznad prostorije „${roomKind(room.kind).name}” ostaje samo ${fmt(Math.max(0, clear))} m do krova. Galerija tu nema smisla; podigni zidove ili izaberi krov sa nagibom.`)
+    else if (clear < 1.9) notes.push(`Galerija iznad prostorije „${roomKind(room.kind).name}” ima ${fmt(clear)} m visine, pa služi za odlaganje, ne za boravak.`)
   })
+  pushCuts(lines, 'Galerija', 'Nosači poda galerije, kutija 80×40×2', joists, 'box-80x40x2')
+  lines.push(line('Galerija', 'OSB 22 mm, pod galerije', Math.ceil((deck * 1.08) / OSB_SHEET), 'ploča', `${fmt(deck)} m², ploča 2,50 × 1,25 m`, { priceId: 'osb22-sheet', once: true, skill: 'konstrukcija' }))
+  lines.push(line('Galerija', 'Ograda galerije, visine 1,0 m', roundCut(railing), 'm', 'na otvorenim stranama', { priceId: 'railing-m', once: true, skill: 'konstrukcija' }))
+  lines.push(line('Galerija', 'Stepenice za galeriju', lofts.length, 'kom', 'čelične, strme, sa rukohvatom', { priceId: 'loft-stairs', once: true, skill: 'konstrukcija' }))
+  notes.push('Pod galerije je računat na oko 150 kg/m², što je odlaganje, a ne magacin. Za teret traži proračun.')
+}
 
-  const walls = [
-    { name: 'front', a: [-width / 2, length / 2], b: [width / 2, length / 2], gable: roof.kind === 'duo' && roof.ridge === 'length' },
-    { name: 'back', a: [-width / 2, -length / 2], b: [width / 2, -length / 2], gable: roof.kind === 'duo' && roof.ridge === 'length' },
-    { name: 'left', a: [-width / 2, length / 2], b: [-width / 2, -length / 2], gable: roof.kind === 'duo' && roof.ridge === 'width' },
-    { name: 'right', a: [width / 2, -length / 2], b: [width / 2, length / 2], gable: roof.kind === 'duo' && roof.ridge === 'width' },
-  ]
-  walls.forEach((wall) => {
-    const span = Math.hypot(wall.b[0] - wall.a[0], wall.b[1] - wall.a[1])
-    const bays = Math.max(1, Math.ceil(span / POST_SPACING - 1e-9))
-    const spots = []
-    for (let index = 1; index < bays; index += 1) spots.push(index / bays)
-    if (wall.gable && !spots.some((spot) => Math.abs(spot - 0.5) < 0.12)) spots.push(0.5)
-    spots.forEach((spot) => {
-      const x = wall.a[0] + (wall.b[0] - wall.a[0]) * spot
-      const z = wall.a[1] + (wall.b[1] - wall.a[1]) * spot
-      if (postInDoor(x, z, door, dimensions)) return
-      if (pedestrianDoors.some((item) => postInOpening(x, z, item, dimensions))) return
-      const height = heightAt(x, z)
-      heights.push(height)
-      posts.push({ x, z, height, role: 'medju' })
-    })
+// Više jedinica u nizu: omotač i konstrukcija se množe, a zid između dve jedinice se oblaže jednom.
+function applyUnits(lines, notes, scene) {
+  const units = scene.units || 1
+  if (units <= 1) return lines
+  const SHELL = new Set(['Konstrukcija', 'Zidovi', 'Krov', 'Izolacija', 'Oluk', 'Temelj', 'Pod', 'Vrata', 'Stolarija', 'Spojni materijal'])
+  const { width, length, height } = scene.dimensions
+  const perimeter = (width + length) * 2 * height
+  const wallFactor = (units * perimeter - (units - 1) * length * height) / perimeter
+  notes.push(`Niz od ${units} jedinica: konstrukcija, krov, ploča i otvori su pomnoženi sa ${units}. Zid između dve jedinice oblaže se samo jednom. Struja, prostorije i dodaci važe za ceo niz.`)
+  return lines.map((entry) => {
+    if (!SHELL.has(entry.section) || entry.once) return entry
+    const factor = entry.section === 'Zidovi' && (entry.unit === 'm²' || entry.unit === 'tabla') ? wallFactor : units
+    const scale = (value) => (Number.isInteger(value) && factor === units ? value * units : Math.round(value * factor * 100) / 100)
+    return {
+      ...entry,
+      quantity: entry.unit === 'tabla' ? Math.ceil(entry.quantity * factor) : scale(entry.quantity),
+      meters: entry.meters == null ? entry.meters : Math.round(entry.meters * factor * 100) / 100,
+      detail: entry.detail ? `${units} jedinice · po jedinici: ${entry.detail}` : `${units} jedinice`,
+    }
   })
-  return { heights, posts }
 }
 
-export function structurePosts(dimensions, roof, door, pedestrianDoors = []) {
-  return columnLengths(dimensions, roofGeometry(dimensions, roof), roof, door, pedestrianDoors).posts
+function pushRooms(lines, notes, warnings, scene) {
+  const rooms = scene.rooms || []
+  if (rooms.length === 0) return
+  let panel = 0
+  let ceiling = 0
+  rooms.forEach((room) => {
+    const box = roomBox(room, scene.dimensions)
+    panel += (room.width + room.depth) * box.height - box.doorWidth * box.doorHeight
+    ceiling += room.width * room.depth
+    if (roomBlocksOpening(room, scene.dimensions, scene.door.style === 'none' ? null : scene.door)) {
+      warnings.push(`${roomKind(room.kind).name} stoji ispred glavnih vrata. Pomeri prostoriju u drugi ugao ili pomeri vrata.`)
+    }
+    if ((scene.pedestrianDoors || []).some((item) => roomBlocksOpening(room, scene.dimensions, item))) {
+      notes.push(`Bočna vrata vode pravo u prostoriju „${roomKind(room.kind).name}”.`)
+    }
+  })
+  const names = rooms.map((room) => `${roomKind(room.kind).name.toLowerCase()} ${fmt(room.width)} × ${fmt(room.depth)} m`).join(', ')
+  lines.push(line('Prostorije', 'Pregradni sendvič panel 50 mm', round1(panel * 1.05), 'm²', names, { priceId: 'partition-m2', skill: 'konstrukcija' }))
+  lines.push(line('Prostorije', 'Plafon prostorije, panel 50 mm', round1(ceiling * 1.05), 'm²', 'nosi se na pregrade i spoljne zidove', { priceId: 'partition-m2', skill: 'konstrukcija' }))
+  lines.push(line('Prostorije', 'Unutrašnja vrata sa štokom', rooms.length, 'kom', '0,80 × 2,00 m', { priceId: 'interior-door', skill: 'stolarija' }))
+  const toilets = rooms.filter((room) => room.kind === 'wc').length
+  if (toilets) {
+    lines.push(line('Prostorije', 'Sanitarni komplet', toilets, 'kompl', 'šolja, vodokotlić, lavabo i slavina', { priceId: 'wc-set', skill: 'oprema' }))
+    warnings.push('WC traži dovod vode i odvod u kanalizaciju ili septičku jamu. Cevi idu u ploču, pa ih treba rešiti pre betoniranja.')
+  }
+  if (rooms.some((room) => room.kind === 'kotlarnica')) {
+    warnings.push('Kotlarnica traži dimnjak, dovod svežeg vazduha i negorivu oblogu oko kotla. Za gas i veće kotlove obavezan je projekat.')
+  }
+  if (rooms.some((room) => room.kind === 'kancelarija') && scene.insulation === 'none') {
+    notes.push('Kancelarija u hladnom objektu se teško greje. Pregradni panel je izolovan, ali spoljna dva zida nisu.')
+  }
+  notes.push('Prostorije su od pregradnog panela do 2,5 m, sa svojim plafonom. Prostor iznad plafona ostaje za odlaganje.')
 }
 
-export function profileSet(dimensions, metrics) {
-  const span = dimensions.width
-  const slope = Math.max(...metrics.slopes.map((item) => item.slopeLength))
-  const post =
-    span > 6.5 || dimensions.height > 3.2
-      ? { name: 'kutija 100×100×3', priceId: 'post-100x100x3' }
-      : span > 4.5 || dimensions.height > 2.7
-        ? { name: 'kutija 80×80×3', priceId: 'post-80x80x3' }
-        : { name: 'kutija 80×80×2', priceId: 'post-80x80x2' }
-  const rafter =
-    slope > 6
-      ? { name: 'kutija 80×40×3', priceId: 'box-80x40x3' }
-      : slope > 4.2
-        ? { name: 'kutija 80×40×2', priceId: 'box-80x40x2' }
-        : { name: 'kutija 60×40×2', priceId: 'box-60x40x2' }
-  const purlin = slope > 6 ? { name: 'kutija 60×40×2', priceId: 'box-60x40x2' } : { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
-  const plate = span > 6.5 ? { name: 'kutija 80×40×2', priceId: 'box-80x40x2' } : { name: 'kutija 60×40×2', priceId: 'box-60x40x2' }
-  const girt = { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
-  return { post, rafter, purlin, plate, girt }
-}
-
-function postInDoor(x, z, door, dimensions) {
-  if (!door || door.style === 'none' || !Number.isFinite(door.width)) return false
-  return postInOpening(x, z, { ...door, wall: door.wall || 'front' }, dimensions)
-}
-
-function postInOpening(x, z, opening, dimensions) {
-  if (!opening || !Number.isFinite(opening.width)) return false
-  const wall = wallFrame(opening.wall || 'left', dimensions)
-  const along = (x - wall.origin[0]) * wall.axis[0] + (z - wall.origin[2]) * wall.axis[2]
-  const across = (x - wall.origin[0]) * wall.normal[0] + (z - wall.origin[2]) * wall.normal[2]
-  if (Math.abs(across) > 0.45) return false
-  return Math.abs(along - (opening.along || 0)) < opening.width / 2 + 0.08
+// Nameštaj je rekvizit i ne ulazi u cenu, ali neka oprema postavlja uslove objektu.
+function pushEquipmentNotes(notes, warnings, scene) {
+  const items = scene.furniture || []
+  if (items.some((item) => item.type === 'lift2' || item.type === 'lift4')) {
+    warnings.push('Dizalica se ankeriše u ploču: ispod stubova treba bar 20 cm armiranog betona C25/30, a računica broji ploču od 15 cm. Reci to zidaru pre betoniranja.')
+    if (scene.dimensions.height < 3.8) {
+      warnings.push(`Za pun hod dizalice treba oko 3,8 m do krova. Objekat ima ${fmt(scene.dimensions.height)} m, pa se viši auto neće moći podići do kraja.`)
+    }
+    if (!scene.electric?.enabled || scene.electric.phase !== 'three') notes.push('Većina dizalica ima trofazni motor. Uključi trofaznu struju u delu Dodaci.')
+  }
+  if (items.some((item) => item.type === 'compressor' || item.type === 'welder') && scene.electric?.enabled && scene.electric.phase !== 'three') {
+    notes.push('Kompresor i aparat za varenje vuku jaku struju. Proveri da li monofazni priključak to nosi.')
+  }
+  if (items.some((item) => item.type === 'stove' || item.type === 'boiler')) {
+    notes.push('Peć i kotao traže dimnjak kroz krov sa opšivkom i razmak od limenog zida. To nije u računici.')
+  }
 }
 
 function skillFor(entry) {
@@ -207,7 +276,7 @@ function pushWallCover(lines, notes, scene, geometry) {
   const colorNote = scene.wallColor ? `, RAL ${scene.wallColor}` : ''
   if (cover.kind === 'boards') {
     lines.push(line('Zidovi', `${cover.name}${colorNote}, sa 8% reza`, round1(net * SHEET_WASTE), 'm²', '', { priceId: material.priceId }))
-    lines.push(line('Zidovi', 'Podkonstrukcija, letva 50×30', Math.ceil(net / 0.5), 'm', 'letve na 50 cm'))
+    lines.push(line('Zidovi', cover.sub ?? 'Podkonstrukcija, letva 50×30', Math.ceil(net / 0.5), 'm', 'nosači obloge na 50 cm'))
     return net
   }
   const tallest = Math.max(areas.heightLeft, areas.heightRight, areas.heightBack, areas.heightFront)
@@ -486,6 +555,9 @@ function pushElectric(lines, notes, warnings, scene) {
   lines.push(line('Struja', 'Utičnice', electric.sockets, 'kom', '', { priceId: 'el-socket' }))
   if (three) lines.push(line('Struja', 'Trofazna utičnica', 1, 'kom', 'za kompresor ili mašinu', { priceId: 'el-socket-3f' }))
   lines.push(line('Struja', 'LED svetiljke', electric.lights, 'kom', '', { priceId: 'el-light' }))
+  const layout = electricLayout(scene)
+  if (layout.switches.length) lines.push(line('Struja', 'Prekidači', layout.switches.length, 'kom', 'uz ulaz, na 1,10 m', { priceId: 'el-switch' }))
+  if (layout.conduitLength > 0) lines.push(line('Struja', 'Kanalice i cevi', roundCut(layout.conduitLength), 'm', 'po rasporedu iz prikaza'))
   if (electric.charger === 'ready') {
     lines.push(line('Struja', 'Priprema za punjač', 1, 'kompl', 'cev, kabl i osigurač za kasniju ugradnju', { priceId: 'ev-ready' }))
   } else if (electric.charger === 'charger') {
@@ -512,8 +584,15 @@ function pushCanopy(lines, warnings, scene) {
   if (!canopy?.enabled) return
   const length = canopySpan(canopy, scene.dimensions)
   const area = round1(length * canopy.depth)
-  lines.push(line('Nadstrešnica', 'Nadstrešnica, stubovi i krovni lim', area, 'm²', `${fmt(canopy.depth)} × ${fmt(length)} m, uz zid`, { priceId: 'canopy-m2', skill: 'konstrukcija' }))
-  if (area > CANOPY_FREE_AREA) {
+  lines.push(line('Nadstrešnica', canopy.closed ? 'Aneks, konstrukcija i krovni lim' : 'Nadstrešnica, stubovi i krovni lim', area, 'm²', `${fmt(canopy.depth)} × ${fmt(length)} m, uz zid`, { priceId: 'canopy-m2', skill: 'konstrukcija' }))
+  if (canopy.closed) {
+    const wall = findMaterial(WALL_MATERIALS, scene.wallMaterialId)
+    const wallArea = round1((length + canopy.depth * 2) * (scene.dimensions.height - 0.2) - 1.9)
+    lines.push(line('Nadstrešnica', `Zidovi aneksa, ${wall.name}`, wallArea, 'm²', 'tri strane, četvrta je zid objekta', { priceId: wall.priceId, skill: 'konstrukcija' }))
+    lines.push(line('Nadstrešnica', 'Ulazna vrata aneksa', 1, 'kom', '0,90 × 2,00 m'))
+    warnings.push('Zatvoren aneks nije nadstrešnica: ulazi u površinu objekta kod dozvole. Vidi Vodič za dozvole.')
+  }
+  if (!canopy.closed && area > CANOPY_FREE_AREA) {
     warnings.push(`Nadstrešnica preko ${CANOPY_FREE_AREA} m² nije među objektima bez akta. Vidi Vodič za dozvole.`)
   }
 }
