@@ -54,7 +54,7 @@ export function FurniturePiece({ item, selected, clash = false, raise = 0, onSel
         {(selected || clash) && (
           <mesh position={[0, item.height / 2, 0]}>
             <boxGeometry args={[item.width + 0.06, item.height + 0.04, item.depth + 0.06]} />
-            <meshBasicMaterial color={clash ? '#dc2626' : '#f97316'} wireframe />
+            <meshBasicMaterial color={clash ? '#dc2626' : '#f5b800'} wireframe />
           </mesh>
         )}
       </group>

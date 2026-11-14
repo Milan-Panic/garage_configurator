@@ -119,7 +119,7 @@ function Selection({ width, height, depth }) {
   return (
     <mesh>
       <boxGeometry args={[width + 0.04, height + 0.04, depth + 0.04]} />
-      <meshBasicMaterial color="#f97316" wireframe />
+      <meshBasicMaterial color="#f5b800" wireframe />
     </mesh>
   )
 }

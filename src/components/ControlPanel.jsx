@@ -185,7 +185,7 @@ export function ControlPanel(props) {
 
   return (
     <aside className="flex max-h-[56dvh] min-h-0 w-full shrink-0 flex-col border-b border-stone-200 bg-[var(--panel)] md:max-h-none md:w-[400px] md:border-r md:border-b-0">
-      <header className="space-y-3 border-b border-stone-200 px-4 pt-4 pb-3">
+      <header className="space-y-3 border-b border-stone-200 bg-white px-4 pt-4">
         <div className="flex items-center gap-2">
           <div className="min-w-0 flex-1">
             <input
@@ -194,7 +194,7 @@ export function ControlPanel(props) {
               aria-label="Naziv objekta"
               maxLength={60}
               onChange={(event) => onProjectNameChange(event.target.value)}
-              className="w-full truncate rounded-md border border-transparent bg-transparent px-1.5 py-1 text-lg font-semibold text-stone-950 outline-none placeholder:text-stone-400 hover:border-stone-200 focus:border-stone-300 focus:bg-white"
+              className="font-display w-full truncate rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-2xl font-bold text-stone-950 outline-none placeholder:text-stone-400 hover:border-stone-200 focus:border-stone-300 focus:bg-white"
             />
             <p className="flex items-center gap-1.5 px-1.5 text-xs text-stone-500" role="status">
               <span className={`size-1.5 rounded-full ${status.tone}`} />
@@ -212,7 +212,7 @@ export function ControlPanel(props) {
             Sačuvaj
           </button>
         </div>
-        <nav className="grid grid-cols-7 gap-1 rounded-xl bg-stone-100 p-1" aria-label="Delovi konfiguratora">
+        <nav className="-mx-4 grid grid-cols-7 border-t border-stone-200 px-2" aria-label="Delovi konfiguratora">
           {TABS.map((entry) => {
             const Icon = entry.icon
             const active = tab === entry.id
@@ -223,8 +223,8 @@ export function ControlPanel(props) {
                 type="button"
                 aria-pressed={active}
                 onClick={() => setTab(entry.id)}
-                className={`relative flex flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[11px] font-medium transition ${
-                  active ? 'bg-white text-stone-950 shadow-sm' : 'text-stone-500 hover:text-stone-800'
+                className={`relative flex flex-col items-center gap-0.5 border-b-[3px] px-1 pt-2.5 pb-1.5 text-xs font-semibold transition-colors ${
+                  active ? 'border-tape text-stone-950' : 'border-transparent text-stone-500 hover:text-stone-900'
                 }`}
               >
                 <Icon size={16} />
@@ -248,13 +248,13 @@ export function ControlPanel(props) {
 
       <footer className="flex items-center gap-3 border-t border-stone-200 bg-white px-4 py-3">
         <button type="button" onClick={() => setTab('estimate')} className="min-w-0 flex-1 text-left">
-          <span className="block text-[11px] tracking-wide text-stone-500 uppercase">Orijentaciono</span>
-          <span className="block truncate text-lg font-semibold text-stone-950 tabular-nums">{formatDin(total)}</span>
+          <span className="block text-xs text-stone-500">Orijentaciono</span>
+          <span className="font-display block truncate text-2xl leading-tight font-bold text-stone-950 tabular-nums">{formatDin(total)}</span>
         </button>
         <button
           type="button"
           onClick={() => navigate('/majstori')}
-          className="flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600"
+          className="btn-tape px-4 py-2.5 text-sm"
         >
           <Send size={15} />
           Pošalji upit
@@ -322,7 +322,7 @@ function ShapeTab({ scene, estimate, onDimensionChange, onSceneChange, onRoofCha
                 aria-pressed={active}
                 onClick={() => applySize(size)}
                 className={`rounded-lg border px-2 py-1.5 text-left transition ${
-                  active ? 'border-orange-500 bg-orange-50' : 'border-stone-200 bg-white hover:border-stone-400'
+                  active ? 'border-accent-500 bg-accent-50' : 'border-stone-200 bg-white hover:border-stone-400'
                 }`}
               >
                 <span className="block truncate text-xs font-medium text-stone-900">{size.name}</span>
@@ -587,7 +587,7 @@ function MaterialGrid({ options, value, color, onChange }) {
     <div className="space-y-3">
       {groups.map((group) => (
         <div key={group.label}>
-          <p className="mb-1.5 text-[11px] font-medium tracking-wide text-stone-400 uppercase">{group.label}</p>
+          <p className="mb-1.5 text-xs font-semibold text-stone-500">{group.label}</p>
           <div className="grid grid-cols-4 gap-1.5">
             {group.items.map((item) => {
               const active = item.id === selected.id
@@ -600,12 +600,12 @@ function MaterialGrid({ options, value, color, onChange }) {
                   aria-pressed={active}
                   onClick={() => onChange(item.id)}
                   className={`relative overflow-hidden rounded-lg border-2 transition ${
-                    active ? 'border-orange-500' : 'border-transparent hover:border-stone-300'
+                    active ? 'border-accent-500' : 'border-transparent hover:border-stone-300'
                   }`}
                 >
                   <PatternSwatch spec={active ? tinted(item, color) : item} width={96} height={72} className="block aspect-[4/3] w-full" />
                   {active && (
-                    <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-orange-500 text-white">
+                    <span className="absolute top-1 right-1 flex size-4 items-center justify-center rounded-full bg-accent-500 text-white">
                       <Check size={11} strokeWidth={3} />
                     </span>
                   )}
@@ -638,7 +638,7 @@ function ColorRow({ label, value, base, onChange }) {
           aria-label="Fabrička boja"
           aria-pressed={!value}
           onClick={() => onChange(null)}
-          className={`size-7 rounded-full border-2 ${!value ? 'border-orange-500' : 'border-white ring-1 ring-stone-300'}`}
+          className={`size-7 rounded-full border-2 ${!value ? 'border-accent-500' : 'border-white ring-1 ring-stone-300'}`}
           style={{ background: base.color }}
         />
         {RAL_COLORS.map((entry) => (
@@ -649,7 +649,7 @@ function ColorRow({ label, value, base, onChange }) {
             aria-label={`RAL ${entry.id} ${entry.name}`}
             aria-pressed={value === entry.id}
             onClick={() => onChange(entry.id)}
-            className={`size-7 rounded-full border-2 transition ${value === entry.id ? 'scale-110 border-orange-500' : 'border-white ring-1 ring-stone-300'}`}
+            className={`size-7 rounded-full border-2 transition ${value === entry.id ? 'scale-110 border-accent-500' : 'border-white ring-1 ring-stone-300'}`}
             style={{ background: entry.hex }}
           />
         ))}
@@ -752,7 +752,7 @@ function OpeningsTab({
               className="group rounded-lg border border-stone-200 bg-white px-2 py-2 text-left transition hover:border-stone-400"
             >
               <span className="flex items-center gap-1 text-xs font-medium text-stone-900">
-                <Plus size={12} className="text-orange-500" />
+                <Plus size={12} className="text-accent-500" />
                 {type.name}
               </span>
               <span className="block text-[10px] text-stone-500">{type.detail}</span>
@@ -792,7 +792,7 @@ function OpeningsTab({
                       aria-pressed={selectedWindow.frame === entry.id}
                       onClick={() => onChangeWindow(selectedWindow.id, { frame: entry.id })}
                       className={`flex items-center gap-1.5 rounded-full border py-1 pr-2.5 pl-1 text-[11px] ${
-                        selectedWindow.frame === entry.id ? 'border-orange-500 bg-orange-50 text-stone-900' : 'border-stone-200 bg-white text-stone-600'
+                        selectedWindow.frame === entry.id ? 'border-accent-500 bg-accent-50 text-stone-900' : 'border-stone-200 bg-white text-stone-600'
                       }`}
                     >
                       <span className="size-4 rounded-full ring-1 ring-black/10" style={{ background: entry.hex }} />
@@ -819,7 +819,7 @@ function OpeningsTab({
           onClick={onAddPedestrian}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-stone-300 bg-white px-3 py-2 text-sm font-medium text-stone-800 transition hover:border-stone-500"
         >
-          <Plus size={14} className="text-orange-500" />
+          <Plus size={14} className="text-accent-500" />
           Dodaj bočna vrata
         </button>
         <ItemList
@@ -913,7 +913,7 @@ function InteriorTab({
                 aria-label={finish.name}
                 aria-pressed={active}
                 onClick={() => onSceneChange({ floor: finish.id })}
-                className={`overflow-hidden rounded-lg border-2 transition ${active ? 'border-orange-500' : 'border-transparent hover:border-stone-300'}`}
+                className={`overflow-hidden rounded-lg border-2 transition ${active ? 'border-accent-500' : 'border-transparent hover:border-stone-300'}`}
               >
                 <PatternSwatch spec={finish} width={72} height={72} className="block aspect-square w-full" />
               </button>
@@ -958,7 +958,7 @@ function InteriorTab({
               className="rounded-lg border border-stone-200 bg-white px-2 py-2 text-left transition hover:border-stone-400 disabled:opacity-40 disabled:hover:border-stone-200"
             >
               <span className="flex items-center gap-1 text-xs font-medium text-stone-900">
-                <Plus size={12} className="text-orange-500" />
+                <Plus size={12} className="text-accent-500" />
                 {kind.name}
               </span>
               <span className="block text-[10px] text-stone-500">{kind.detail}</span>
@@ -1021,7 +1021,7 @@ function InteriorTab({
       <Section icon={Sofa} title="Inventar">
         {FURNITURE_GROUPS.map((group) => (
           <div key={group}>
-            <p className="mb-1.5 text-[11px] font-medium tracking-wide text-stone-400 uppercase">{group}</p>
+            <p className="mb-1.5 text-xs font-semibold text-stone-500">{group}</p>
             <div className="flex flex-wrap gap-1.5">
               {FURNITURE_TYPES.filter((type) => furnitureGroup(type.id) === group).map((type) => (
                 <button
@@ -1031,7 +1031,7 @@ function InteriorTab({
                   onClick={() => onAddFurniture(type.id)}
                   className="flex items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-800 transition hover:border-stone-400"
                 >
-                  <Plus size={12} className="text-orange-500" />
+                  <Plus size={12} className="text-accent-500" />
                   {type.name}
                 </button>
               ))}
@@ -1084,7 +1084,7 @@ function InteriorTab({
                   aria-label={`Boja ${color}`}
                   aria-pressed={car.color === color}
                   onClick={() => onChangeCar({ color })}
-                  className={`size-6 rounded-full border-2 ${car.color === color ? 'border-orange-500' : 'border-white ring-1 ring-stone-300'}`}
+                  className={`size-6 rounded-full border-2 ${car.color === color ? 'border-accent-500' : 'border-white ring-1 ring-stone-300'}`}
                   style={{ background: color }}
                 />
               ))}
@@ -1284,7 +1284,7 @@ function OffersSection({ scene, estimate, partners, onSceneChange }) {
                 type="button"
                 aria-pressed={active}
                 onClick={() => choose(pack.id, offer.partner.id)}
-                className={`w-full rounded-lg border px-3 py-2 text-left transition ${active ? 'border-orange-500 bg-orange-50' : 'border-stone-200 bg-white hover:border-stone-400'}`}
+                className={`w-full rounded-lg border px-3 py-2 text-left transition ${active ? 'border-accent-500 bg-accent-50' : 'border-stone-200 bg-white hover:border-stone-400'}`}
               >
                 <span className="flex items-baseline justify-between gap-2 text-sm">
                   <span className="min-w-0 truncate font-medium text-stone-900">{offer.partner.name}</span>
@@ -1342,7 +1342,7 @@ function EstimateTab({ scene, estimate, quote, total, partners, onSceneChange })
   return (
     <div className="space-y-6">
       <div className="rounded-xl bg-stone-900 p-4 text-white">
-        <p className="text-xs tracking-wide text-stone-400 uppercase">Orijentaciona cena</p>
+        <p className="text-xs text-stone-400">Orijentaciona cena</p>
         <p className="mt-1 text-2xl font-semibold tabular-nums">{formatDin(total)}</p>
         <p className="mt-1 text-xs text-stone-400">
           oko {formatDin(total / Math.max(1, area))} po m² · zbir po stavkama, nije ponuda
@@ -1355,7 +1355,7 @@ function EstimateTab({ scene, estimate, quote, total, partners, onSceneChange })
                 <span className="tabular-nums">{formatDin(group.total)}</span>
               </p>
               <div className="mt-1 h-1.5 rounded-full bg-white/10">
-                <div className="h-1.5 rounded-full bg-orange-400" style={{ width: `${(group.total / peak) * 100}%` }} />
+                <div className="h-1.5 rounded-full bg-accent-400" style={{ width: `${(group.total / peak) * 100}%` }} />
               </div>
             </div>
           ))}
@@ -1447,7 +1447,7 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, onSaveProject, o
         onClick={() => requestSwitch({ type: 'new' })}
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-stone-300 bg-white px-3 py-2.5 text-sm font-medium text-stone-900 transition hover:border-stone-500"
       >
-        <Plus size={15} className="text-orange-500" />
+        <Plus size={15} className="text-accent-500" />
         Nov objekat
       </button>
       {pending && (
@@ -1484,7 +1484,7 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, onSaveProject, o
             const open = project.id === activeProjectId
             const confirming = pendingDeleteId === project.id
             return (
-              <li key={project.id} className={`rounded-lg bg-white px-2 py-1.5 ring-1 ${open ? 'ring-orange-400' : 'ring-stone-200'}`}>
+              <li key={project.id} className={`rounded-lg bg-white px-2 py-1.5 ring-1 ${open ? 'ring-accent-400' : 'ring-stone-200'}`}>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -1537,8 +1537,8 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, onSaveProject, o
 function Section({ icon: Icon, title, children }) {
   return (
     <section className="space-y-3">
-      <h2 className="flex items-center gap-2 text-xs font-semibold tracking-wide text-stone-500 uppercase">
-        <Icon size={14} />
+      <h2 className="flex items-center gap-2 border-b border-stone-300 pb-1 text-xl leading-tight font-bold text-stone-950">
+        <Icon size={16} className="text-stone-500" />
         {title}
       </h2>
       {children}
@@ -1547,7 +1547,7 @@ function Section({ icon: Icon, title, children }) {
 }
 
 function Editor({ children }) {
-  return <div className="space-y-3 rounded-xl bg-white p-3 ring-1 ring-orange-200">{children}</div>
+  return <div className="space-y-3 rounded-xl bg-white p-3 ring-1 ring-accent-200">{children}</div>
 }
 
 function Hint({ children }) {
@@ -1600,7 +1600,7 @@ function Toggle({ label, detail, checked, onChange }) {
       <input type="checkbox" className="peer sr-only" checked={checked} onChange={(event) => onChange(event.target.checked)} />
       <span
         aria-hidden="true"
-        className="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-stone-300 transition peer-checked:bg-orange-500 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-300 after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow after:transition peer-checked:after:translate-x-4"
+        className="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-stone-300 transition peer-checked:bg-accent-500 peer-focus-visible:ring-2 peer-focus-visible:ring-accent-300 after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow after:transition peer-checked:after:translate-x-4"
       />
     </label>
   )
@@ -1680,7 +1680,7 @@ function ItemList({ items, selectedId, onSelect, onRemove, labelFor }) {
               aria-pressed={active}
               onClick={() => onSelect(item.id)}
               className={`min-w-0 flex-1 truncate rounded-lg px-3 py-1.5 text-left text-sm transition ${
-                active ? 'bg-orange-500 font-medium text-white' : 'bg-white text-stone-800 ring-1 ring-stone-200 hover:ring-stone-300'
+                active ? 'bg-accent-500 font-medium text-white' : 'bg-white text-stone-800 ring-1 ring-stone-200 hover:ring-stone-300'
               }`}
             >
               {labelFor(item)}

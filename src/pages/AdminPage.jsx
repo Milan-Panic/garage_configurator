@@ -84,8 +84,7 @@ export function AdminPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-4xl px-6 py-10">
-        <p className="text-sm font-medium tracking-wide text-stone-500 uppercase">Admin</p>
-        <h1 className="mt-2 text-3xl font-semibold text-stone-950">Odobrenje upita</h1>
+        <h1 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Odobrenje upita</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-700">
           Upit prvo stiže ovde. Odobrenje šalje majstoru poruku sa linkom na Radionicu. Odbijen upit majstor ne vidi.
         </p>

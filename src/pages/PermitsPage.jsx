@@ -80,8 +80,7 @@ export function PermitsPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <p className="text-sm font-medium tracking-wide text-stone-500 uppercase">Vodič</p>
-        <h1 className="mt-2 text-3xl font-semibold text-stone-950">Da li ti treba dozvola?</h1>
+        <h1 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Da li ti treba dozvola?</h1>
         <p className="mt-3 text-sm leading-relaxed text-stone-700">
           Zakon ne pravi izuzetak zato što je objekat montažni. Važno je čemu služi i gde stoji, pre svega da li je uz glavni objekat na istoj parceli.
           Kratak pregled ispod je napravljen iz propisa i tekstova sa interneta.
@@ -95,7 +94,7 @@ export function PermitsPage() {
           {CASES.map((item) => (
             <section key={item.title} className="rounded-xl border border-stone-300 bg-white p-4">
               <h2 className="font-semibold text-stone-950">{item.title}</h2>
-              <p className="mt-1 text-sm font-medium text-orange-700">{item.answer}</p>
+              <p className="mt-1 text-sm font-medium text-accent-700">{item.answer}</p>
               <p className="mt-2 text-sm leading-relaxed text-stone-700">{item.text}</p>
               <p className="mt-2 text-xs text-stone-500">
                 Izvor:{' '}
@@ -128,7 +127,7 @@ export function PermitsPage() {
         <button
           type="button"
           onClick={() => navigate('/konfigurator')}
-          className="mt-8 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-orange-600"
+          className="mt-8 rounded-lg bg-accent-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600"
         >
           Složi objekat
         </button>

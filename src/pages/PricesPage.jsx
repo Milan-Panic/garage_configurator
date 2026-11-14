@@ -72,8 +72,7 @@ export function PricesPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <p className="text-sm font-medium tracking-wide text-stone-500 uppercase">Administrator</p>
-        <h1 className="mt-2 text-3xl font-semibold text-stone-950">Orijentacione cene</h1>
+        <h1 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Orijentacione cene</h1>
         <p className="mt-3 text-sm leading-relaxed text-stone-700">
           Ovo su polazne cene za računicu kad kupac ne izabere firmu. Svaka stavka ima cenu po jedinici mere. Prozor, krilo i
           rolo vrata idu po površini otvora, bočna vrata po komadu. Ispod stavke su cene aktivnih firmi. Zbir je orijentacija,
