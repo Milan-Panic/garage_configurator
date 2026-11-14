@@ -150,7 +150,7 @@ function StatusScreen({ message }) {
   return (
     <div className="flex h-full items-center justify-center px-6 text-center text-stone-600">
       <span className="flex items-center gap-3">
-        <span className="size-2 animate-pulse rounded-full bg-orange-500" />
+        <span className="size-2 animate-pulse rounded-full bg-accent-500" />
         {message}
       </span>
     </div>

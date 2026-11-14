@@ -139,7 +139,7 @@ export function OfferPage({ scene, projectName, estimate, catalog }) {
         </button>
         <input value={customer} onChange={(event) => setCustomer(event.target.value)} placeholder="Ime kupca (ide na ponudu)" className="min-w-0 flex-1 rounded-lg border border-stone-200 px-3 py-2 text-sm" />
         <input value={place} onChange={(event) => setPlace(event.target.value)} placeholder="Adresa ili parcela" className="min-w-0 flex-1 rounded-lg border border-stone-200 px-3 py-2 text-sm" />
-        <button type="button" onClick={() => window.print()} className="flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">
+        <button type="button" onClick={() => window.print()} className="flex items-center gap-2 rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-white hover:bg-accent-600">
           <Printer size={15} />
           Štampaj ili sačuvaj kao PDF
         </button>

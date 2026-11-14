@@ -100,15 +100,14 @@ export function WorkshopPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-3xl px-6 py-10">
-        <p className="text-sm font-medium tracking-wide text-stone-500 uppercase">Radionica</p>
-        <h1 className="mt-2 text-3xl font-semibold text-stone-950">Upiti za tvoje skilove</h1>
+        <h1 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Upiti za tvoje skilove</h1>
         <p className="mt-3 text-sm leading-relaxed text-stone-700">
           Upit vidiš tek kad bude odobren, i stiže na imejl sa kojim si otvorio nalog. Prihvatanjem kažeš svoju cenu. Kupac vidi tu cenu plus 10%. Telefon kupca vidiš tek kad plati naknadu, pa ga ti zoveš.
         </p>
 
         {!token && (
           <div className="mt-8 space-y-4">
-            <p className="rounded-lg bg-[#f7f4ef] px-3 py-2 text-sm text-stone-700">
+            <p className="rounded-lg bg-stone-100 px-3 py-2 text-sm text-stone-700">
               Probni nalozi imaju lozinku <span className="font-medium">radionica</span>. Imejlovi: bravar@okvir.mera, krov@lim.mera, oluk@lim.mera, limar@zemun.mera, rolo@pancevo.mera, stolarija@pancevo.mera, zidar@subotica.mera.
             </p>
             {mode !== 'register' ? (

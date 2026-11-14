@@ -1,21 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
-import {
-  ArrowRight,
-  Boxes,
-  Calculator,
-  CheckCircle2,
-  FileText,
-  MapPin,
-  MousePointerClick,
-  PackagePlus,
-  PenTool,
-  Send,
-  ShieldCheck,
-  Store,
-} from 'lucide-react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { navigate } from '../nav'
 import { DOOR_MATERIALS, ROOF_MATERIALS, WALL_MATERIALS, sceneMaterials } from '../materials'
-import { FURNITURE_TYPES, WINDOW_TYPES } from '../layout'
+import { clampDoor, clampPedestrian, clampWindow } from '../layout'
+import { DIMENSION_LIMITS } from '../config'
 import { buildEstimate } from '../estimate'
 import { useOfferPartners } from '../partners'
 import { PACKAGES, formatDin, mergePrices, orientationQuote, packageName, quoteTotal } from '../prices'
@@ -30,25 +17,13 @@ function priceOf(scene) {
   return quoteTotal(orientationQuote(scene, buildEstimate(scene), PRICES))
 }
 
-const exampleTotal = priceOf(initialScene)
-
-const HERO = normalizeScene({
-  ...initialScene,
-  dimensions: { width: 6, length: 7, height: 2.7 },
-  wallMaterialId: 'fasadni-panel-grafit',
-  roofMaterialId: 'falc-cink',
-  doorMaterialId: 'sekcijska-glatka-crna',
-  roof: { kind: 'mono', pitch: 8, fall: 'back', ridge: 'length' },
-  door: { style: 'sectional', open: 0.3, wall: 'front', along: -0.3, width: 4.6, height: 2.2 },
-  windows: [{ id: 'window-1', type: 'strip', wall: 'left', along: 0, sill: 1.9, width: 2.4, height: 0.45, frame: 'crna' }],
-  pedestrianDoors: [{ id: 'pesacka-1', wall: 'right', along: 1.8, width: 0.9, height: 2.05, glass: true }],
-})
-
+// `object` je vrsta u akuzativu, za naslov „Složi … po meri".
 const SAMPLES = [
   {
     name: 'Garaža za dva vozila',
     type: 'Garaža',
-    tag: 'Fasadni panel · falc',
+    object: 'garažu',
+    tag: 'Fasadni panel, falcovani krov',
     scene: normalizeScene({
       ...initialScene,
       buildingType: 'garaza',
@@ -65,7 +40,8 @@ const SAMPLES = [
   {
     name: 'Ostava u dvorištu',
     type: 'Ostava',
-    tag: 'Lim sa dekorom hrasta · limeni crep',
+    object: 'ostavu',
+    tag: 'Lim sa dekorom hrasta, limeni crep',
     scene: normalizeScene({
       ...initialScene,
       buildingType: 'ostava',
@@ -81,7 +57,8 @@ const SAMPLES = [
   {
     name: 'Radionica za mehaničara',
     type: 'Radionica',
-    tag: 'Sendvič panel · rolo vrata',
+    object: 'radionicu',
+    tag: 'Sendvič panel, rolo vrata',
     scene: normalizeScene({
       ...initialScene,
       buildingType: 'radionica',
@@ -100,7 +77,8 @@ const SAMPLES = [
   {
     name: 'Magacin za robu',
     type: 'Magacin',
-    tag: 'Sinusni lim · sekcijska vrata',
+    object: 'magacin',
+    tag: 'Sinusni lim, sekcijska vrata',
     scene: normalizeScene({
       ...initialScene,
       buildingType: 'magacin',
@@ -117,17 +95,17 @@ const SAMPLES = [
 ]
 
 const STEPS = [
-  { icon: PenTool, title: 'Složi objekat', text: 'Garaža, ostava, radionica ili magacin. Mere, krov, fasada, vrata i dodaci, a sačuvano ostaje u ovom pregledaču.' },
-  { icon: Calculator, title: 'Vidi računicu', text: 'Spisak profila, tabli i okova kakav pravi majstor, i orijentaciona cena po poslu — odmah, dok menjaš.' },
-  { icon: Store, title: 'Izaberi ponudu', text: 'Kad firme imaju cene, vidiš komplet ponudu za svoj objekat. Materijal za jedan paket ide od jedne firme.' },
-  { icon: Send, title: 'Pošalji upit', text: 'Svaki posao ide majstoru koji ima taj skil. Ime, imejl i telefon ostavljaš tek tada.' },
-  ]
+  { title: 'Složi objekat', text: 'Garaža, ostava, radionica ili magacin. Mere, krov, fasada, vrata i dodaci, a sačuvano ostaje u ovom pregledaču.' },
+  { title: 'Vidi računicu', text: 'Spisak profila, tabli i okova kakav pravi majstor, i orijentaciona cena po poslu. Menja se dok menjaš objekat.' },
+  { title: 'Izaberi ponudu', text: 'Kad firme imaju cene, vidiš komplet ponudu za svoj objekat. Materijal za jedan paket ide od jedne firme.' },
+  { title: 'Pošalji upit', text: 'Svaki posao ide majstoru koji ima taj skil. Ime, imejl i telefon ostavljaš tek tada.' },
+]
 
 const FEATURES = [
-  { icon: Boxes, title: 'Lim i paneli', text: `${WALL_MATERIALS.length} obloga zidova, ${ROOF_MATERIALS.length} krovnih pokrivača, ${DOOR_MATERIALS.length} završnih obrada vrata i RAL boje.` },
-  { icon: FileText, title: 'Crteži sa kotama', text: 'Tlocrt i dve fasade sa merama otvora i stubova, da majstor odmah vidi šta radi.' },
-    { icon: PackagePlus, title: 'Dodaci po izboru', text: 'Nadstrešnica, ventilacija, solarni paneli i struja ulaze u istu računicu.' },
-  { icon: ShieldCheck, title: 'Majstor za taj deo', text: 'Oluk limaru, ploča betonaru, vrata monteru. Jedan majstor može da pokrije više poslova.' },
+  { title: 'Lim i paneli', text: `${WALL_MATERIALS.length} obloga zidova, ${ROOF_MATERIALS.length} krovnih pokrivača, ${DOOR_MATERIALS.length} završnih obrada vrata i RAL boje.` },
+  { title: 'Crteži sa kotama', text: 'Tlocrt i dve fasade sa merama otvora i stubova, da majstor odmah vidi šta radi.' },
+  { title: 'Dodaci po izboru', text: 'Nadstrešnica, ventilacija, solarni paneli i struja ulaze u istu računicu.' },
+  { title: 'Majstor za taj deo', text: 'Oluk limaru, ploča betonaru, vrata monteru. Jedan majstor može da pokrije više poslova.' },
 ]
 
 const QUESTIONS = [
@@ -140,10 +118,34 @@ const QUESTIONS = [
   ['Da li mi treba dozvola?', 'Zavisi od toga čemu objekat služi i gde stoji. Kratak pregled je u Vodiču za dozvole, a konačan odgovor daje opštinski urbanizam.'],
 ]
 
+const CANVAS = '#d3d9de'
+const STILL = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)
+
+// Primer sa novim merama: otvori se pomeraju da stanu na kraće zidove.
+function resize(scene, width, length) {
+  const dimensions = { ...scene.dimensions, width, length }
+  const door = clampDoor(scene.door, dimensions)
+  return {
+    ...scene,
+    dimensions,
+    door,
+    windows: scene.windows.map((item) => clampWindow(item, dimensions)),
+    pedestrianDoors: (scene.pedestrianDoors || []).map((item) => clampPedestrian(item, dimensions, door)),
+  }
+}
+
 export function HomePage({ onStartFrom }) {
   const partners = useOfferPartners()
   const [cities, setCities] = useState(['Beograd', 'Zemun', 'Novi Sad', 'Pančevo', 'Subotica'])
-  const heroPrice = useMemo(() => priceOf(HERO), [])
+  const [pick, setPick] = useState(0)
+  const [size, setSize] = useState(SAMPLES[0].scene.dimensions)
+  const sample = SAMPLES[pick]
+  const live = useMemo(() => resize(sample.scene, size.width, size.length), [sample, size.width, size.length])
+  const shown = useDeferredValue(live)
+  const quote = useMemo(() => orientationQuote(shown, buildEstimate(shown), PRICES), [shown])
+  const total = quoteTotal(quote)
+  const jobs = SKILLS.filter((skill) => quote[skill.id]?.total > 0).map((skill) => ({ ...skill, total: quote[skill.id].total }))
+  const largest = Math.max(1, ...jobs.map((job) => job.total))
 
   useEffect(() => {
     fetch('/api/craftsmen')
@@ -161,262 +163,264 @@ export function HomePage({ onStartFrom }) {
     else navigate('/konfigurator')
   }
 
+  function choose(index) {
+    setPick(index)
+    setSize(SAMPLES[index].scene.dimensions)
+  }
+
   return (
-    <div className="h-full overflow-y-auto">
-      <section className="relative overflow-hidden bg-[#17181a] text-white">
-        <div className="pointer-events-none absolute -top-40 -right-40 size-[520px] rounded-full bg-orange-500/20 blur-3xl" />
-        <div className="relative mx-auto grid max-w-6xl gap-10 px-6 py-14 md:grid-cols-[1.05fr_1fr] md:items-center md:py-20">
-          <div>
-            <p className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-orange-300 ring-1 ring-white/10">
-              <span className="size-1.5 rounded-full bg-orange-400" />
-              Garaže, ostave, radionice i magacini
-            </p>
-            <h1 className="mt-5 max-w-xl text-4xl leading-[1.08] font-bold tracking-tight md:text-[3.4rem]">
-              Složi montažni objekat.
-              <span className="block text-stone-400">Majstor dobija računicu i crtež.</span>
-            </h1>
-            <p className="mt-5 max-w-lg text-base leading-relaxed text-stone-300 md:text-lg">
-              Složi objekat u 3D pre nego što zoveš majstora. Vidiš spisak materijala i orijentacionu cenu dok menjaš, a
-              upit ide majstorima koji rade taj deo posla i firmama koje prodaju materijal.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => navigate('/konfigurator')}
-                className="flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition hover:bg-orange-600"
-              >
-                Otvori konfigurator
-                <ArrowRight size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/majstori')}
-                className="rounded-xl px-5 py-3 text-sm font-semibold text-white ring-1 ring-white/20 transition hover:bg-white/5"
-              >
-                Pogledaj majstore
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('/dozvole')}
-                className="rounded-xl px-3 py-3 text-sm font-semibold text-stone-300 transition hover:text-white"
-              >
-                Treba li mi dozvola?
-              </button>
-            </div>
-            <div className="mt-6 flex flex-wrap gap-2">
-              {SAMPLES.map((sample) => (
+    <div className="relative h-full overflow-y-auto">
+      <section className="mx-auto grid max-w-7xl gap-x-12 gap-y-8 px-4 pt-10 pb-14 md:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start lg:pt-14">
+        <div>
+          <h1 className="text-[2.75rem] leading-[0.95] font-extrabold text-stone-950 sm:text-6xl xl:text-7xl">
+            Složi {sample.object} po meri pre nego što pozoveš majstora.
+          </h1>
+          <p className="mt-5 max-w-[34rem] text-lg leading-relaxed text-stone-700">
+            Probaj odmah: izaberi objekat i povuci kote. Model, spisak materijala i orijentaciona cena prate svaku
+            izmenu, a upit ide majstorima i firmama tek kad ti odlučiš.
+          </p>
+
+          <div className="mt-8 max-w-[34rem] space-y-5">
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-stone-300/60 p-1 sm:grid-cols-4" role="group" aria-label="Vrsta objekta">
+              {SAMPLES.map((entry, index) => (
                 <button
-                  key={sample.type}
+                  key={entry.type}
                   type="button"
-                  onClick={() => start(sample.scene)}
-                  className="rounded-full bg-white/5 px-3 py-1.5 text-sm text-stone-200 ring-1 ring-white/15 transition hover:bg-white/10"
+                  aria-pressed={index === pick}
+                  onClick={() => choose(index)}
+                  className={`rounded-md px-3 py-2 text-[15px] font-semibold transition-colors ${
+                    index === pick ? 'bg-stone-900 text-white' : 'text-stone-700 hover:bg-white/70'
+                  }`}
                 >
-                  {sample.type}
+                  {entry.type}
                 </button>
               ))}
             </div>
-            <dl className="mt-8 grid max-w-md grid-cols-3 gap-4 border-t border-white/10 pt-6">
-              <HeroStat value={`${WALL_MATERIALS.length + ROOF_MATERIALS.length + DOOR_MATERIALS.length}+`} label="materijala" />
-              <HeroStat value={`${WINDOW_TYPES.length + FURNITURE_TYPES.length}`} label="prozora i predmeta" />
-              <HeroStat value="0 RSD" label="za projektovanje" />
+            <Kota label="Širina" limits={DIMENSION_LIMITS.width} value={size.width} onChange={(width) => setSize((current) => ({ ...current, width }))} />
+            <Kota label="Dužina" limits={DIMENSION_LIMITS.length} value={size.length} onChange={(length) => setSize((current) => ({ ...current, length }))} />
+          </div>
+
+          <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
+            <button type="button" onClick={() => start(live)} className="btn-tape px-6 py-3.5 text-base">
+              Nastavi sa ovim objektom
+            </button>
+            <a
+              href="/dozvole"
+              onClick={(event) => {
+                event.preventDefault()
+                navigate('/dozvole')
+              }}
+              className="font-semibold text-stone-800 underline decoration-stone-400 underline-offset-4 hover:decoration-stone-900"
+            >
+              Treba li mi dozvola?
+            </a>
+          </div>
+        </div>
+
+        {/* List crteža: model u okviru, ispod njega pečat sa merama i cenom. */}
+        <figure className="overflow-hidden rounded-lg border-[1.5px] border-stone-900 bg-white">
+          <GarageView
+            {...viewProps(shown)}
+            theta={0.7}
+            orbit
+            autoRotate={!STILL}
+            background={CANVAS}
+            className="h-[300px] w-full cursor-grab active:cursor-grabbing sm:h-[400px] xl:h-[460px]"
+          />
+          <figcaption className="border-t-[1.5px] border-stone-900">
+            <dl className="grid grid-cols-2 sm:grid-cols-[1fr_1.3fr_0.8fr_1.6fr]">
+              <Stamp label="Objekat" value={sample.type} className="border-r border-b sm:border-b-0" />
+              <Stamp label="Širina × dužina" value={`${fmt(shown.dimensions.width)} × ${fmt(shown.dimensions.length)} m`} className="border-b sm:border-r sm:border-b-0" />
+              <Stamp label="Osnova" value={`${Math.round(shown.dimensions.width * shown.dimensions.length)} m²`} className="border-r" />
+              <Stamp label="Orijentaciono" value={formatDin(total)} strong />
             </dl>
-          </div>
-          <div className="relative">
-            <div className="overflow-hidden rounded-2xl ring-1 ring-white/10 shadow-2xl">
-              <GarageView {...viewProps(HERO)} theta={0.7} autoRotate orbit className="h-[340px] w-full md:h-[440px]" />
-            </div>
-            <div className="absolute -bottom-4 left-4 flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-stone-900 shadow-xl">
-              <Calculator size={18} className="text-orange-500" />
-              <span>
-                <span className="block text-[11px] text-stone-500">Ovaj model, orijentaciono</span>
-                <span className="block text-sm font-bold tabular-nums">{formatDin(heroPrice)}</span>
-              </span>
-            </div>
-            <div className="absolute top-4 right-4 flex items-center gap-1.5 rounded-full bg-black/50 px-3 py-1.5 text-xs text-white backdrop-blur">
-              <MousePointerClick size={13} />
-              Prevuci da okreneš
-            </div>
-          </div>
-        </div>
+          </figcaption>
+        </figure>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 py-16">
-        <SectionHead eyebrow="Kako radi" title="Od ideje do majstora u četiri koraka" />
-        <ol className="mt-8 grid gap-4 md:grid-cols-4">
-          {STEPS.map((step, index) => {
-            const Icon = step.icon
-            return (
-              <li key={step.title} className="relative rounded-2xl bg-white p-5 ring-1 ring-stone-200">
-                <span className="flex items-center justify-between">
-                  <span className="flex size-10 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
-                    <Icon size={20} />
-                  </span>
-                  <span className="text-3xl font-bold text-stone-200">0{index + 1}</span>
-                </span>
-                <h3 className="mt-4 font-semibold text-stone-950">{step.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-stone-600">{step.text}</p>
-              </li>
-            )
-          })}
-        </ol>
-      </section>
-
-      <section className="bg-white py-16">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <SectionHead eyebrow="Primeri" title="Od ostave do magacina" text="Prevuci mišem preko modela da ga okreneš. Svaki primer možeš da otvoriš i doradiš." />
-          </div>
-          <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-            {SAMPLES.map((sample) => (
-              <article key={sample.name} className="group overflow-hidden rounded-2xl bg-[var(--page)] ring-1 ring-stone-200 transition hover:shadow-lg">
-                <GarageView {...viewProps(sample.scene)} orbit className="h-60 w-full" />
-                <div className="space-y-3 p-4">
-                  <div>
-                    <h3 className="font-semibold text-stone-950">{sample.name}</h3>
-                    <p className="text-xs text-stone-500">
-                      {sample.tag} · {fmt(sample.scene.dimensions.width)} × {fmt(sample.scene.dimensions.length)} m
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-stone-900 tabular-nums">≈ {formatDin(priceOf(sample.scene))}</span>
-                    <button
-                      type="button"
-                      onClick={() => start(sample.scene)}
-                      className="flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-stone-700"
-                    >
-                      Kreni od ovog
-                      <ArrowRight size={13} />
-                    </button>
-                  </div>
+      <section className="bg-white">
+        <div className="mx-auto max-w-7xl px-4 py-16 md:px-6">
+          <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Od ideje do majstora</h2>
+          <ol className="mt-8 grid md:grid-cols-4">
+            {STEPS.map((step, index) => (
+              <li key={step.title} className="pb-8 md:pb-0">
+                <div className="tape flex h-8 items-start">
+                  <span className="font-display bg-stone-950 px-2.5 text-lg leading-8 font-bold text-tape">{index + 1}</span>
                 </div>
-              </article>
+                <h3 className="font-display mt-4 pr-6 text-2xl font-bold text-stone-950">{step.title}</h3>
+                <p className="mt-1.5 max-w-xs pr-6 text-[15px] leading-relaxed text-stone-600">{step.text}</p>
+              </li>
             ))}
-          </div>
+          </ol>
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-6 py-16">
-        <SectionHead eyebrow="Šta dobijaš" title="Projekat koji majstor razume" />
-        <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURES.map((feature) => {
-            const Icon = feature.icon
-            return (
-              <li key={feature.title} className="rounded-2xl bg-white p-5 ring-1 ring-stone-200">
-                <Icon size={22} className="text-orange-500" />
-                <h3 className="mt-3 font-semibold text-stone-950">{feature.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-stone-600">{feature.text}</p>
-              </li>
-            )
-          })}
-        </ul>
+      <section className="mx-auto max-w-7xl px-4 py-16 md:px-6">
+        <div className="max-w-2xl">
+          <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Od ostave do magacina</h2>
+          <p className="mt-3 text-stone-600">Prevuci preko modela da ga okreneš. Svaki primer možeš da otvoriš i doradiš.</p>
+        </div>
+        <div className="mt-8 grid gap-x-5 gap-y-10 sm:grid-cols-2 xl:grid-cols-4">
+          {SAMPLES.map((entry) => (
+            <article key={entry.name}>
+              <GarageView {...viewProps(entry.scene)} orbit background={CANVAS} className="h-56 w-full overflow-hidden rounded-lg" />
+              <h3 className="font-display mt-3 text-2xl leading-tight font-bold text-stone-950">{entry.name}</h3>
+              <p className="text-[15px] text-stone-600">{entry.tag}</p>
+              <p className="mt-2 flex items-baseline justify-between gap-3 border-t border-stone-300 pt-2 text-[15px] tabular-nums">
+                <span className="text-stone-600">
+                  {fmt(entry.scene.dimensions.width)} × {fmt(entry.scene.dimensions.length)} m
+                </span>
+                <span className="font-display text-xl font-bold text-stone-950">{formatDin(priceOf(entry.scene))}</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => start(entry.scene)}
+                className="mt-3 w-full rounded-lg bg-stone-900 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700"
+              >
+                Kreni od ovog
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="bg-stone-900 text-white">
+        <div className="mx-auto grid max-w-7xl gap-x-12 gap-y-8 px-4 py-16 md:px-6 lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
+          <div>
+            <h2 className="text-4xl leading-none font-bold md:text-5xl">Cena, posao po posao</h2>
+            <p className="mt-4 max-w-md leading-relaxed text-stone-300">
+              Ovo je računica za objekat koji si podesio na vrhu strane: {sample.type.toLowerCase()} {fmt(shown.dimensions.width)} ×{' '}
+              {fmt(shown.dimensions.length)} m. Svaki red je poseban upit za majstora koji radi taj deo.
+            </p>
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-stone-400">
+              To nije ponuda majstora, već zbir materijala po stavkama. Ponuda je cena koju majstor unese kad prihvati upit.
+            </p>
+          </div>
+          <table aria-label="Orijentaciona cena po poslovima" className="w-full self-start text-left tabular-nums">
+            <tbody>
+              {jobs.map((job) => (
+                <tr key={job.id} className="border-b border-white/15">
+                  <th scope="row" className="py-2.5 pr-4 text-[15px] font-medium text-stone-200">
+                    {job.name}
+                  </th>
+                  <td className="hidden w-2/5 py-2.5 sm:table-cell" aria-hidden="true">
+                    <span className="block h-2 rounded-sm bg-tape" style={{ width: `${Math.max(2, (job.total / largest) * 100)}%` }} />
+                  </td>
+                  <td className="font-display py-2.5 pl-4 text-right text-xl font-semibold whitespace-nowrap">{formatDin(job.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row" className="pt-4 text-[15px] font-medium text-stone-300">
+                  Ukupno, orijentaciono
+                </th>
+                <td className="hidden sm:table-cell" />
+                <td className="font-display pt-4 text-right text-4xl font-bold whitespace-nowrap text-tape">{formatDin(total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-16 md:px-6">
+        <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Projekat koji majstor razume</h2>
+        <dl className="mt-8 grid gap-x-10 sm:grid-cols-2 lg:grid-cols-4">
+          {FEATURES.map((feature) => (
+            <div key={feature.title} className="border-t-[1.5px] border-stone-900 pt-3 pb-8">
+              <dt className="font-display text-2xl font-bold text-stone-950">{feature.title}</dt>
+              <dd className="mt-1.5 text-[15px] leading-relaxed text-stone-600">{feature.text}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
 
       {partners.length > 0 && (
-        <section className="mx-auto max-w-6xl px-6 pb-16">
-          <SectionHead
-            eyebrow="Partneri"
-            title="Uporedi komplet ponude"
-            text="Firma daje cene za ceo paket, pa ne skupljaš lim i šrafove sa više strana. Ponuda se računa za tvoj objekat u delu Računica."
-          />
-          <ul className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="mx-auto max-w-7xl px-4 pb-16 md:px-6">
+          <div className="max-w-2xl">
+            <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Uporedi komplet ponude</h2>
+            <p className="mt-3 text-stone-600">
+              Firma daje cene za ceo paket, pa ne skupljaš lim i šrafove sa više strana. Ponuda se računa za tvoj objekat u delu Računica.
+            </p>
+          </div>
+          <ul className="mt-6 grid gap-x-10 sm:grid-cols-2 lg:grid-cols-3">
             {partners.map((partner) => (
-              <li key={partner.id} className="rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-                <p className="font-semibold text-stone-950">{partner.name}</p>
-                <p className="text-sm text-stone-600">{partner.city}{partner.sponsored ? ' · Sponzorisano' : ''}</p>
-                <p className="mt-2 text-xs text-stone-500">{partner.packages.map(packageName).join(' · ')}</p>
+              <li key={partner.id} className="border-t border-stone-300 py-3">
+                <p className="flex items-baseline justify-between gap-3">
+                  <span className="font-display text-xl font-bold text-stone-950">{partner.name}</span>
+                  {partner.sponsored && <span className="rounded-sm bg-tape-soft px-1.5 text-xs text-stone-800">Sponzorisano</span>}
+                </p>
+                <p className="text-[15px] text-stone-600">{partner.city}</p>
+                <p className="mt-1 text-sm text-stone-500">{partner.packages.map(packageName).join(', ')}</p>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <section className="mx-auto max-w-6xl px-6 pb-16">
-        <div className="grid gap-8 overflow-hidden rounded-3xl bg-[#17181a] p-8 text-white md:grid-cols-[1.2fr_1fr] md:p-10">
+      <section className="bg-white">
+        <div className="mx-auto grid max-w-7xl gap-x-12 gap-y-12 px-4 py-16 md:px-6 lg:grid-cols-2">
           <div>
-            <p className="text-xs font-semibold tracking-wide text-orange-300 uppercase">Primer cene</p>
-            <h2 className="mt-2 text-2xl font-bold md:text-3xl">Polazni objekat 6 × 8 m</h2>
-            <p className="mt-3 max-w-md text-sm leading-relaxed text-stone-400">
-              Polazni model iz konfiguratora, sa olukom i sekcijskim vratima. To nije ponuda majstora, već zbir po
-              stavkama iz računice.
-            </p>
-            <p className="mt-6 text-4xl font-bold tabular-nums">{formatDin(exampleTotal)}</p>
+            <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Radiš ili prodaješ?</h2>
+            <div className="mt-6 border-t-[1.5px] border-stone-900 pt-4">
+              <h3 className="font-display text-2xl font-bold text-stone-950">Radiš montažne objekte, krovove ili vrata</h3>
+              <p className="mt-1.5 max-w-xl text-[15px] leading-relaxed text-stone-600">
+                Registruj radionicu i dobijaj upite sa gotovom računicom i crtežom. Plaćaš samo kad posao prihvatiš.
+              </p>
+              <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-stone-600" aria-label="Gradovi sa radionicama">
+                {cities.map((city) => (
+                  <li key={city}>{city}</li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => navigate('/radionica')}
+                className="mt-4 rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700"
+              >
+                Registruj radionicu
+              </button>
+            </div>
+            <div className="mt-8 border-t-[1.5px] border-stone-900 pt-4">
+              <h3 className="font-display text-2xl font-bold text-stone-950">Prodaješ lim, panele, vrata ili elektro opremu</h3>
+              <p className="mt-1.5 max-w-xl text-[15px] leading-relaxed text-stone-600">
+                Unesi cenovnik jednom. Kupci vide tvoju komplet ponudu za svoj objekat, a stižu ti upiti sa gotovim spiskom stavki.
+                Paketi su: {PACKAGES.map((pack) => pack.name.toLowerCase()).join(', ')}.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('/partner')}
+                className="mt-4 rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700"
+              >
+                Unesi cenovnik
+              </button>
+            </div>
           </div>
           <div>
-            <p className="text-sm text-stone-400">Računica je podeljena po poslovima:</p>
-            <ul className="mt-3 space-y-2">
-              {SKILLS.map((skill) => (
-                <li key={skill.id} className="flex items-center gap-2 text-sm">
-                  <CheckCircle2 size={16} className="text-orange-400" />
-                  {skill.name}
-                </li>
+            <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Kratki odgovori</h2>
+            <div className="mt-6 border-t-[1.5px] border-stone-900">
+              {QUESTIONS.map(([title, text]) => (
+                <details key={title} className="group border-b border-stone-300">
+                  <summary className="flex cursor-pointer items-center justify-between gap-4 py-3 font-semibold text-stone-950">
+                    {title}
+                    <span aria-hidden="true" className="font-display text-2xl leading-none text-stone-500 transition-transform group-open:rotate-45">
+                      +
+                    </span>
+                  </summary>
+                  <p className="max-w-xl pb-4 text-[15px] leading-relaxed text-stone-600">{text}</p>
+                </details>
               ))}
-            </ul>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-16 md:grid-cols-2">
-        <div>
-          <SectionHead eyebrow="Mreža" title="Gradovi sa radionicama" />
-          <ul className="mt-6 flex flex-wrap gap-2">
-            {cities.map((city) => (
-              <li key={city} className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm text-stone-800 ring-1 ring-stone-200">
-                <MapPin size={13} className="text-orange-500" />
-                {city}
-              </li>
-            ))}
-          </ul>
-          <div className="mt-8 rounded-2xl bg-orange-50 p-5 ring-1 ring-orange-200">
-            <h3 className="font-semibold text-stone-950">Radiš montažne objekte, krovove ili vrata?</h3>
-            <p className="mt-1 text-sm leading-relaxed text-stone-700">
-              Registruj radionicu i dobijaj upite sa gotovom računicom i crtežom. Plaćaš samo kad posao prihvatiš.
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate('/radionica')}
-              className="mt-4 flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Otvori radionicu
-              <ArrowRight size={14} />
-            </button>
-          </div>
-          <div className="mt-4 rounded-2xl bg-white p-5 ring-1 ring-stone-200">
-            <h3 className="font-semibold text-stone-950">Prodaješ lim, panele, vrata ili elektro opremu?</h3>
-            <p className="mt-1 text-sm leading-relaxed text-stone-700">
-              Unesi cenovnik jednom. Kupci vide tvoju komplet ponudu za svoj objekat, a stižu ti upiti sa gotovim spiskom stavki.
-              U ponudi su paketi: {PACKAGES.map((pack) => pack.name).join(', ')}.
-            </p>
-            <button
-              type="button"
-              onClick={() => navigate('/partner')}
-              className="mt-4 flex items-center gap-1.5 rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Postani partner
-              <ArrowRight size={14} />
-            </button>
-          </div>
-        </div>
-        <div>
-          <SectionHead eyebrow="Pitanja" title="Kratki odgovori" />
-          <div className="mt-6 space-y-2">
-            {QUESTIONS.map(([title, text]) => (
-              <details key={title} className="group rounded-xl bg-white px-4 py-3 ring-1 ring-stone-200">
-                <summary className="flex cursor-pointer items-center justify-between font-medium text-stone-950">
-                  {title}
-                  <span className="text-stone-400 transition group-open:rotate-45">+</span>
-                </summary>
-                <p className="mt-2 text-sm leading-relaxed text-stone-600">{text}</p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t border-stone-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-6 text-sm text-stone-500">
-          <span className="flex items-center gap-2">
+      <footer className="bg-stone-900 text-stone-400">
+        <div className="tape h-3" aria-hidden="true" />
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-6 text-sm md:px-6">
+          <span className="flex items-center gap-2.5">
             <LogoMark size={24} />
-            <span className="font-semibold text-stone-900">Mera</span> · Montažni objekti po meri.
+            <span className="font-display text-lg font-bold text-white">Mera</span>
+            <span>Montažni objekti po meri</span>
           </span>
           <span>Cene su orijentacione. Količine nisu statički proračun.</span>
         </div>
@@ -425,22 +429,32 @@ export function HomePage({ onStartFrom }) {
   )
 }
 
-function HeroStat({ value, label }) {
+// Kota: mera se menja povlačenjem po kotnoj liniji.
+function Kota({ label, limits, value, onChange }) {
   return (
-    <div>
-      <dt className="sr-only">{label}</dt>
-      <dd className="text-xl font-bold text-white tabular-nums">{value}</dd>
-      <dd className="text-xs text-stone-400">{label}</dd>
-    </div>
+    <label className="block">
+      <span className="flex items-baseline justify-between">
+        <span className="text-[15px] font-semibold text-stone-700">{label}</span>
+        <span className="font-display text-2xl leading-none font-bold text-stone-950 tabular-nums">{fmt(value)} m</span>
+      </span>
+      <input
+        type="range"
+        className="kota"
+        min={limits.min}
+        max={limits.max}
+        step={limits.step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
   )
 }
 
-function SectionHead({ eyebrow, title, text }) {
+function Stamp({ label, value, strong = false, className = '' }) {
   return (
-    <div>
-      <p className="text-xs font-semibold tracking-wide text-orange-600 uppercase">{eyebrow}</p>
-      <h2 className="mt-1.5 text-2xl font-bold tracking-tight text-stone-950 md:text-3xl">{title}</h2>
-      {text && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-stone-600">{text}</p>}
+    <div className={`border-stone-300 px-3 py-2.5 ${strong ? 'bg-tape' : ''} ${className}`}>
+      <dt className={`text-xs ${strong ? 'text-stone-800' : 'text-stone-500'}`}>{label}</dt>
+      <dd className="font-display text-xl leading-tight font-bold whitespace-nowrap text-stone-950 tabular-nums sm:text-2xl">{value}</dd>
     </div>
   )
 }

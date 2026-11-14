@@ -62,7 +62,7 @@ export function PedestrianDoor({ item, dimensions, selected, onSelect, onChange,
       {selected && (
         <mesh position={[0, 0, -0.05]}>
           <boxGeometry args={[item.width + 0.04, item.height + 0.04, 0.1]} />
-          <meshBasicMaterial color="#f97316" wireframe />
+          <meshBasicMaterial color="#f5b800" wireframe />
         </mesh>
       )}
     </group>

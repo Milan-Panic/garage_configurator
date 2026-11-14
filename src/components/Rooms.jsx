@@ -102,7 +102,7 @@ export function Rooms({ rooms = [], dimensions, selectedId, showCeiling = true, 
             {selectedId === room.id && (
               <mesh position={[box.centerX, box.floor + box.height / 2, box.centerZ]}>
                 <boxGeometry args={[room.width + 0.06, box.height + 0.06, room.depth + 0.06]} />
-                <meshBasicMaterial color="#f97316" wireframe />
+                <meshBasicMaterial color="#f5b800" wireframe />
               </mesh>
             )}
           </group>

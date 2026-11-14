@@ -186,8 +186,7 @@ export function CraftsmenPage({ scene, projectName }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto max-w-6xl px-6 py-10">
-        <p className="text-sm font-medium tracking-wide text-stone-500 uppercase">Majstori</p>
-        <h1 className="mt-2 text-3xl font-semibold text-stone-950">Poseban upit za svaki posao</h1>
+        <h1 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Poseban upit za svaki posao</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-700">
           Biraš majstora po skilu. Upit prvo čeka odobrenje, pa majstor unosi svoju cenu. Na nju se dodaje 10% naknade.
           Kontakt se otvara tek kad se ta naknada plati, pa majstor zove kupca i dalje se dogovaraju sami.
@@ -282,7 +281,7 @@ export function CraftsmenPage({ scene, projectName }) {
             )
           })}
           {offers.map((entry) => (
-            <fieldset key={entry.pack.id} className="rounded-lg border border-orange-200 bg-orange-50/40 p-3">
+            <fieldset key={entry.pack.id} className="rounded-lg border border-accent-200 bg-accent-50/40 p-3">
               <label className="flex items-start gap-2 text-sm">
                 <input
                   type="checkbox"

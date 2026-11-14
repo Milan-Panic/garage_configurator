@@ -242,7 +242,7 @@ export function GarageCanvas({
             onClick={() => setXray((value) => !value)}
             title="Providni zidovi i čelični skelet iz računice"
             className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-              xray ? 'bg-orange-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+              xray ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
             <ScanEye size={14} />
@@ -254,7 +254,7 @@ export function GarageCanvas({
             onClick={() => setOpenTop((value) => !value)}
             title="Skini krov da vidiš raspored unutra"
             className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-              openTop ? 'bg-orange-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+              openTop ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
             <SquareDashed size={14} />
@@ -269,7 +269,7 @@ export function GarageCanvas({
             }}
             title="Prikaži objekat u dvorištu, sa nebom, drvećem i čovekom za razmeru"
             className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-              yard && !photo ? 'bg-orange-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+              yard && !photo ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
             <Trees size={14} />
@@ -278,7 +278,7 @@ export function GarageCanvas({
           <label
             title="Stavi svoju fotografiju placa u pozadinu, pa okreni objekat da legne na mesto"
             className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
-              photo ? 'bg-orange-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+              photo ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
             <ImagePlus size={14} />

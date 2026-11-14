@@ -1,33 +1,34 @@
-import { ArrowRight } from 'lucide-react'
 import { navigate, ROUTES, usePath } from '../nav'
 
 export function SiteHeader() {
   const path = usePath()
-  const main = ROUTES.filter((route) => route.main)
+  const main = ROUTES.filter((route) => route.main && route.path !== '/')
   const partner = ROUTES.filter((route) => !route.main)
 
   return (
-    <header className="flex shrink-0 items-center gap-4 bg-[#17181a] px-4 py-2.5 text-stone-300 md:px-6">
+    <header className="flex shrink-0 items-stretch gap-4 bg-stone-900 px-4 text-stone-300 md:px-6">
       <a
         href="/"
+        aria-label="Mera, početna strana"
+        aria-current={path === '/' ? 'page' : undefined}
         onClick={(event) => {
           event.preventDefault()
           navigate('/')
         }}
-        className="flex shrink-0 items-center gap-2.5"
+        className="flex shrink-0 items-center gap-2.5 py-2.5"
       >
         <LogoMark />
-        <span className="leading-tight">
-          <span className="block text-[15px] font-bold tracking-tight text-white">Mera</span>
-          <span className="hidden text-[11px] text-stone-400 sm:block">Montažni objekti po meri.</span>
+        <span className="leading-none">
+          <span className="font-display block text-[22px] font-bold tracking-wide text-white">Mera</span>
+          <span className="mt-0.5 hidden text-[11px] text-stone-400 sm:block">Montažni objekti po meri</span>
         </span>
       </a>
 
-      <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto md:justify-center" aria-label="Glavni meni">
+      <nav className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] md:justify-center" aria-label="Glavni meni">
         {main.map((route) => (
           <NavLink key={route.path} route={route} active={path === route.path} />
         ))}
-        <span className="mx-2 hidden h-5 w-px bg-white/10 lg:block" />
+        <span className="mx-3 hidden h-5 w-px self-center bg-white/15 lg:block" />
         {partner.map((route) => (
           <NavLink key={route.path} route={route} active={path === route.path} subtle />
         ))}
@@ -37,16 +38,16 @@ export function SiteHeader() {
         <button
           type="button"
           onClick={() => navigate('/konfigurator')}
-          className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-orange-500 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 sm:flex"
+          className="btn-tape my-2.5 hidden shrink-0 px-4 text-sm sm:inline-flex"
         >
           Složi objekat
-          <ArrowRight size={15} />
         </button>
       )}
     </header>
   )
 }
 
+// Aktivna stavka nosi žutu crtu po donjoj ivici, kao oznaka na metru.
 function NavLink({ route, active, subtle = false }) {
   return (
     <a
@@ -56,8 +57,12 @@ function NavLink({ route, active, subtle = false }) {
         event.preventDefault()
         navigate(route.path)
       }}
-      className={`shrink-0 rounded-lg px-3 py-1.5 transition ${subtle ? 'text-xs' : 'text-sm font-medium'} ${
-        active ? 'bg-white/10 text-white' : subtle ? 'text-stone-500 hover:text-stone-200' : 'text-stone-300 hover:bg-white/5 hover:text-white'
+      className={`flex shrink-0 items-center border-b-[3px] px-3 pt-[3px] transition-colors ${subtle ? 'text-[13px]' : 'text-[15px] font-semibold'} ${
+        active
+          ? 'border-tape text-white'
+          : subtle
+            ? 'border-transparent text-stone-400 hover:text-white'
+            : 'border-transparent text-stone-300 hover:text-white'
       }`}
     >
       {route.label}
@@ -65,13 +70,13 @@ function NavLink({ route, active, subtle = false }) {
   )
 }
 
+// Zabat objekta na osnovi sa graničnicima kote.
 export function LogoMark({ size = 32 }) {
   return (
     <svg viewBox="0 0 48 48" width={size} height={size} aria-hidden="true">
-      <rect width="48" height="48" rx="11" fill="#26282b" />
-      <path d="M8 22 24 11l16 11v16H8z" fill="none" stroke="#f97316" strokeWidth="3.5" strokeLinejoin="round" />
-      <path d="M15 38V27h18v11" fill="none" stroke="#fafaf9" strokeWidth="3" />
-      <path d="M15 31h18M15 35h18" stroke="#fafaf9" strokeWidth="2" />
+      <rect width="48" height="48" rx="6" fill="#f5b800" />
+      <path d="M9 37V20l15-9 15 9v17" fill="none" stroke="#14191d" strokeWidth="4" />
+      <path d="M9 37h30M9 32v10M39 32v10" stroke="#14191d" strokeWidth="3" />
     </svg>
   )
 }

@@ -37,7 +37,7 @@ export function Car({ item, selected, clash = false, base = 0, onSelect, onChang
         {(selected || clash) && (
           <mesh position={[0, 0.03, 0]}>
             <boxGeometry args={[item.width + 0.1, 0.02, item.length + 0.1]} />
-            <meshBasicMaterial color={clash ? '#dc2626' : '#f97316'} wireframe />
+            <meshBasicMaterial color={clash ? '#dc2626' : '#f5b800'} wireframe />
           </mesh>
         )}
       </group>
