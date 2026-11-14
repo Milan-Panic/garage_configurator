@@ -169,7 +169,7 @@ export function HomePage({ onStartFrom }) {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="relative h-full overflow-y-auto">
       <section className="mx-auto grid max-w-7xl gap-x-12 gap-y-8 px-4 pt-10 pb-14 md:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start lg:pt-14">
         <div>
           <h1 className="text-[2.75rem] leading-[0.95] font-extrabold text-stone-950 sm:text-6xl xl:text-7xl">
@@ -296,8 +296,7 @@ export function HomePage({ onStartFrom }) {
               To nije ponuda majstora, već zbir materijala po stavkama. Ponuda je cena koju majstor unese kad prihvati upit.
             </p>
           </div>
-          <table className="w-full self-start text-left tabular-nums">
-            <caption className="sr-only">Orijentaciona cena po poslovima</caption>
+          <table aria-label="Orijentaciona cena po poslovima" className="w-full self-start text-left tabular-nums">
             <tbody>
               {jobs.map((job) => (
                 <tr key={job.id} className="border-b border-white/15">
