@@ -5,9 +5,10 @@ export const ROUTES = [
   { path: '/konfigurator', label: 'Konfigurator', main: true },
   { path: '/majstori', label: 'Majstori', main: true },
   { path: '/dozvole', label: 'Dozvole', main: true },
+  { path: '/paketi', label: 'Paketi', main: true },
   { path: '/radionica', label: 'Radionica' },
   { path: '/partner', label: 'Za firme' },
-  { path: '/cene', label: 'Cene' },
+  { path: '/cene', label: 'Cene materijala' },
   { path: '/admin', label: 'Admin' },
 ]
 

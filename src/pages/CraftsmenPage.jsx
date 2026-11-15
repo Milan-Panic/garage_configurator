@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { GarageDrawings } from '../components/Drawings'
+import { LockedPreview } from '../components/LockedPreview'
 import { GarageView } from '../components/GarageView'
 import { buildEstimate } from '../estimate'
 import { sceneMaterials } from '../materials'
@@ -14,7 +15,7 @@ const SHOTS = [
   { id: 'strana', label: 'Strana', theta: 1.55 },
 ]
 
-export function CraftsmenPage({ scene, projectName }) {
+export function CraftsmenPage({ scene, projectName, billing }) {
   const jobs = useMemo(() => jobsFor(scene), [scene])
   const estimate = useMemo(() => buildEstimate(scene), [scene])
   const [prices, setPrices] = useState(() => mergePrices(null))
@@ -188,12 +189,12 @@ export function CraftsmenPage({ scene, projectName }) {
       <div className="mx-auto max-w-6xl px-6 py-10">
         <h1 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Poseban upit za svaki posao</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-700">
-          Biraš majstora po skilu. Upit prvo čeka odobrenje, pa majstor unosi svoju cenu. Na nju se dodaje 10% naknade.
-          Kontakt se otvara tek kad se ta naknada plati, pa majstor zove kupca i dalje se dogovaraju sami.
+          Biraš majstora po skilu. Upit prvo čeka odobrenje, pa majstor unosi svoju cenu. Čim je unese, vidiš je ovde zajedno sa
+          njegovim telefonom, a on tvoj. Upit i kontakt su besplatni, a dalje se dogovarate sami.
         </p>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-stone-700">
           Oluk, betonska ploča, rolo vrata, struja i metalna konstrukcija ne idu u isti upit. Majstor se nudi samo ako ima
-          skil za taj deo. Objekat {projectName ? `„${projectName}”` : 'iz konfiguratora'} ide uz računicu i tri pogleda.
+          skil za taj deo. Objekat {projectName ? `„${projectName}”` : 'iz konfiguratora'} ide uz računicu, crteže i tri pogleda. Majstor ih dobija i kad ti nemaš paket.
         </p>
 
         <section className="mt-8">
@@ -239,7 +240,23 @@ export function CraftsmenPage({ scene, projectName }) {
         <section className="mt-10">
           <h2 className="text-xl font-semibold text-stone-950">Crteži glavnih delova</h2>
           <div className="mt-4">
-            <GarageDrawings scene={scene} />
+            {billing.access.full ? (
+              <GarageDrawings scene={scene} />
+            ) : (
+              <div className="max-w-md">
+                <LockedPreview
+                  title="Crteži sa kotama su u paketu Uradi sam"
+                  text="Majstor ih dobija uz upit. Ti ih vidiš i štampaš kad otključaš paket za ovaj projekat."
+                  rows={[
+                    ['Osnova sa pozicijama stubova', '1 : 50'],
+                    ['Četiri izgleda sa otvorima', '1 : 50'],
+                    ['Krovna konstrukcija i presek', '1 : 50'],
+                  ]}
+                  billing={billing}
+                  compact
+                />
+              </div>
+            )}
           </div>
         </section>
 
@@ -342,23 +359,13 @@ export function CraftsmenPage({ scene, projectName }) {
             if (!response.ok) throw new Error(payload.error || 'Upit nije povučen.')
             setMyInquiries((current) => current.map((item) => (item.id === id ? payload.inquiry : item)))
           }}
-          onPay={async (id) => {
-            const response = await fetch(`/api/customer/inquiries/${id}/pay`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Customer-Key': customerKey },
-              body: JSON.stringify({ key: customerKey }),
-            })
-            const payload = await response.json()
-            if (!response.ok) throw new Error(payload.error || 'Naknada nije evidentirana.')
-            setMyInquiries((current) => current.map((item) => (item.id === id ? payload.inquiry : item)))
-          }}
         />
       </div>
     </div>
   )
 }
 
-function InquiryBoard({ inquiries, onPay, onWithdraw }) {
+function InquiryBoard({ inquiries, onWithdraw }) {
   const [busy, setBusy] = useState(null)
   const [problem, setProblem] = useState('')
   if (inquiries.length === 0) return null
@@ -374,7 +381,7 @@ function InquiryBoard({ inquiries, onPay, onWithdraw }) {
           {item.orientationTotal > 0 && <p className="mt-1 text-stone-600">Orijentacija {formatDin(item.orientationTotal)}</p>}
           {item.craftsmanPrice != null && (
             <p className="mt-2 text-stone-800">
-              Cena majstora {formatDin(item.craftsmanPrice)}. Naknada 10% {formatDin(item.feeAmount)}. Ukupno za posao {formatDin(item.total)}.
+              Cena majstora za ovaj posao: {formatDin(item.craftsmanPrice)}.
             </p>
           )}
           {(item.canWithdraw || item.canSwitch) && (
@@ -393,31 +400,14 @@ function InquiryBoard({ inquiries, onPay, onWithdraw }) {
               {item.canSwitch ? 'Povuci i izaberi drugog majstora' : 'Povuci upit'}
             </button>
           )}
-          {item.status === 'accepted' && (
-            <button
-              type="button"
-              disabled={busy === item.id}
-              onClick={() => {
-                setProblem('')
-                setBusy(item.id)
-                onPay(item.id)
-                  .catch((reason) => setProblem(reason.message))
-                  .finally(() => setBusy(null))
-              }}
-              className="mt-3 rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white"
-            >
-              {busy === item.id ? 'Evidentiram…' : `Plati naknadu ${formatDin(item.feeAmount)}`}
-            </button>
-          )}
-          {item.status === 'paid' && (
+          {item.craftsman?.phone && (
             <p className="mt-2 text-stone-800">
-              Kontakt je otvoren. {item.craftsman?.profession} iz {item.craftsman?.shop} može da te pozove na {item.craftsman?.phone}. Ostatak cene ide majstoru.
+              Kontakt je otvoren. {item.craftsman?.profession} iz {item.craftsman?.shop}: {item.craftsman.phone}. Cena se plaća direktno majstoru.
             </p>
           )}
         </article>
       ))}
       {problem && <p className="text-sm text-red-700">{problem}</p>}
-      <p className="text-xs text-stone-500">Kartice još nisu povezane. Dugme evidentira naknadu i otvara kontakt.</p>
     </section>
   )
 }
@@ -434,7 +424,7 @@ function statusLabel(status) {
   if (status === 'rejected') return 'Upit nije odobren.'
   if (status === 'withdrawn') return 'Upit je povučen.'
   if (status === 'sent') return 'Poslato majstoru. Čeka se njegova cena.'
-  if (status === 'accepted') return 'Majstor je prihvatio. Naknada otvara kontakt.'
+  if (status === 'accepted') return 'Majstor je prihvatio i uneo cenu. Kontakt je otvoren.'
   if (status === 'declined') return 'Majstor je odbio ovaj upit.'
   if (status === 'paid') return 'Kontakt je otvoren.'
   return 'Čeka odgovor majstora.'

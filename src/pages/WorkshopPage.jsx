@@ -102,7 +102,7 @@ export function WorkshopPage() {
       <div className="mx-auto max-w-3xl px-6 py-10">
         <h1 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Upiti za tvoje skilove</h1>
         <p className="mt-3 text-sm leading-relaxed text-stone-700">
-          Upit vidiš tek kad bude odobren, i stiže na imejl sa kojim si otvorio nalog. Prihvatanjem kažeš svoju cenu. Kupac vidi tu cenu plus 10%. Telefon kupca vidiš tek kad plati naknadu, pa ga ti zoveš.
+          Upit vidiš tek kad bude odobren, i stiže na imejl sa kojim si otvorio nalog. Prihvatanjem kažeš svoju cenu i kupac vidi baš nju. Čim prihvatiš, vidiš telefon kupca, pa ga ti zoveš.
         </p>
 
         {!token && (
@@ -223,13 +223,14 @@ function WorkshopInquiry({ item, onRespond }) {
       )}
       {item.craftsmanPrice != null && (
         <p className="mt-2 text-stone-800">
-          Tvoja cena {formatDin(item.craftsmanPrice)}. Kupac vidi {formatDin(item.total)}, od čega je naknada {formatDin(item.feeAmount)}.
+          Tvoja cena {formatDin(item.craftsmanPrice)}. Kupac vidi isti iznos.
+          {item.feeAmount > 0 ? ` Provizija platforme po tvom dogovoru: ${formatDin(item.feeAmount)}.` : ''}
         </p>
       )}
       {item.customer && (
         <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-emerald-950">
-          Kupac je platio naknadu. Pozovi {item.customer.name} na {item.customer.phone}
-          {item.customer.email ? `, ${item.customer.email}` : ''}. Dalji dogovor i ostatak cene idu direktno.
+          Kontakt je otvoren. Pozovi {item.customer.name} na {item.customer.phone}
+          {item.customer.email ? `, ${item.customer.email}` : ''}. Dalji dogovor i plaćanje idu direktno između vas.
         </p>
       )}
       {error && <p className="mt-2 text-red-700">{error}</p>}
@@ -238,9 +239,9 @@ function WorkshopInquiry({ item, onRespond }) {
 }
 
 function workshopStatus(status) {
-  if (status === 'accepted') return 'Čeka se uplata naknade. Kontakt još nije otvoren.'
+  if (status === 'accepted') return 'Prihvaćeno. Kontakt kupca je otvoren.'
   if (status === 'declined') return 'Odbijeno.'
-  if (status === 'paid') return 'Naknada je plaćena.'
+  if (status === 'paid') return 'Prihvaćeno. Kontakt kupca je otvoren.'
   return 'Novo. Odgovori cenom ili odbij.'
 }
 

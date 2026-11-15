@@ -182,6 +182,7 @@ function applyUnits(lines, notes, scene) {
       ...entry,
       quantity: entry.unit === 'tabla' ? Math.ceil(entry.quantity * factor) : scale(entry.quantity),
       meters: entry.meters == null ? entry.meters : Math.round(entry.meters * factor * 100) / 100,
+      cuts: entry.cuts ? entry.cuts.map((cut) => ({ ...cut, count: cut.count * units })) : entry.cuts,
       detail: entry.detail ? `${units} jedinice · po jedinici: ${entry.detail}` : `${units} jedinice`,
     }
   })
@@ -621,7 +622,8 @@ function pushCuts(lines, section, item, lengths, priceId) {
   const count = parts.reduce((sum, [, pieces]) => sum + pieces, 0)
   const total = parts.reduce((sum, [cut, pieces]) => sum + cut * pieces, 0)
   const detail = parts.map(([cut, pieces]) => `${pieces} × ${fmt(cut)} m`).join(', ')
-  lines.push(line(section, item, count, 'kom', `${detail} · ukupno ${fmt(total)} m`, { priceId, meters: total, priceUnit: 'm' }))
+  const cuts = parts.map(([length, pieces]) => ({ length, count: pieces }))
+  lines.push(line(section, item, count, 'kom', `${detail} · ukupno ${fmt(total)} m`, { priceId, meters: total, priceUnit: 'm', cuts }))
 }
 
 function line(section, item, quantity, unit, detail, extra = {}) {

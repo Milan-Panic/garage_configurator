@@ -17,14 +17,15 @@ import {
   loginCraftsman,
   markReminded,
   openPlatform,
+  listCraftsmanTerms,
   paidFees,
-  payInquiry,
   publicUrl,
   readVisitorLibrary,
   recentMail,
   registerCraftsman,
   rejectInquiry,
   respondInquiry,
+  setCraftsmanCommission,
   resumeVisitor,
   skillLabel,
   withdrawInquiry,
@@ -205,6 +206,7 @@ function createMiddleware(root) {
             admin,
             inquiries: listAdminInquiries(),
             fees: paidFees(),
+            craftsmen: listCraftsmanTerms(),
             mail: recentMail(),
             mailReady: mailReady(),
           })
@@ -213,6 +215,16 @@ function createMiddleware(root) {
           console.error(error)
           sendJson(res, 500, { error: 'Upiti nisu učitani.' })
         })
+      return
+    }
+    if (url?.startsWith('/api/admin/craftsmen/') && req.method === 'PUT') {
+      const admin = adminFromToken(bearer(req))
+      if (!admin) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      const id = decodeURIComponent(url.slice('/api/admin/craftsmen/'.length))
+      handleJson(req, res, (raw) => {
+        const result = setCraftsmanCommission(id, raw.commissionPct)
+        sendJson(res, result.error ? 400 : 200, result)
+      })
       return
     }
     if (url?.startsWith('/api/admin/inquiries/') && req.method === 'POST') {
@@ -238,15 +250,6 @@ function createMiddleware(root) {
     }
     if (url === '/api/customer/inquiries' && req.method === 'GET') {
       sendJson(res, 200, { inquiries: customerInquiries(req.headers['x-customer-key']) })
-      return
-    }
-    if (url?.startsWith('/api/customer/inquiries/') && url.endsWith('/pay') && req.method === 'POST') {
-      const id = decodeURIComponent(url.slice('/api/customer/inquiries/'.length, -'/pay'.length))
-      handleJson(req, res, (raw) => {
-        const result = payInquiry(raw.key || req.headers['x-customer-key'], id)
-        if (result.error) return sendJson(res, 400, result)
-        sendJson(res, 200, result)
-      })
       return
     }
     if (url?.startsWith('/api/customer/inquiries/') && url.endsWith('/withdraw') && req.method === 'POST') {
@@ -453,7 +456,7 @@ async function notifyApproved(inquiry) {
       'Otvori Radionicu, prihvati i unesi svoju cenu:',
       `${publicUrl()}/radionica`,
       '',
-      'Kupčev telefon dobijaš tek kad plati naknadu platforme.',
+      'Kupčev telefon vidiš čim prihvatiš upit i uneseš cenu.',
     ].filter((line) => line !== '').join('\n'),
   })
   await deliver({
@@ -463,7 +466,7 @@ async function notifyApproved(inquiry) {
       `Zdravo ${inquiry.first_name || inquiry.customer_name},`,
       '',
       `Upit za „${skillLabel(inquiry.skill)}” je odobren i poslat majstoru ${inquiry.craftsman?.shop || ''}.`,
-      'Kad prihvati, uneće svoju cenu. Telefon se otvara kad se plati naknada od 10%.',
+      'Kad prihvati, uneće svoju cenu i videćeš njegov telefon. Za upit i kontakt ne plaćaš ništa.',
       '',
       'Mera',
     ].join('\n'),

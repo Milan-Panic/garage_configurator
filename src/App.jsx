@@ -11,6 +11,12 @@ import { AdminPage } from './pages/AdminPage'
 import { PartnerPage } from './pages/PartnerPage'
 import { PermitsPage } from './pages/PermitsPage'
 import { OfferPage } from './pages/OfferPage'
+import { PlansPage } from './pages/PlansPage'
+import { CheckoutHost } from './components/CheckoutModal'
+import { openCheckout } from './billing/checkout'
+import { projectAccess } from './billing/entitlements'
+import { diyOrder, unlockProject, useBilling } from './billing/paymentService'
+import { diyPrice, footprintArea } from './billing/plans'
 import { adoptVisitorKey } from './visitor'
 import { clampDimension } from './config'
 import { settleCar, settleFurniture } from './collide'
@@ -115,6 +121,7 @@ function Shell({ children }) {
     <div className="app-shell flex h-dvh flex-col overflow-hidden bg-[var(--page)]">
       <SiteHeader />
       <div className="min-h-0 flex-1">{children}</div>
+      <CheckoutHost />
     </div>
   )
 }
@@ -166,6 +173,10 @@ function Configurator({ boot }) {
   const [saveNotice, setSaveNotice] = useState(null)
   const [prices, setPrices] = useState(() => mergePrices(null))
   const partners = useOfferPartners()
+  const billingState = useBilling()
+  const access = useMemo(() => projectAccess(billingState, library.activeId), [billingState, library.activeId])
+  const lockRef = useRef(access.lock)
+  lockRef.current = access.lock
   const saveSerial = useRef(0)
   const libraryRef = useRef(library)
   const sceneRef = useRef(scene)
@@ -195,6 +206,12 @@ function Configurator({ boot }) {
     saveNotice && scenesEqual(saveNotice.scene, scene) && saveNotice.name === projectName
       ? saveNotice.message
       : ''
+
+  // Kad se mere zaključaju kupovinom, istorija se prazni: „poništi” ne sme da vrati stare mere.
+  const lockedProject = access.lock ? library.activeId : null
+  useEffect(() => {
+    if (lockedProject) replace(sceneRef.current)
+  }, [lockedProject, replace])
 
   useEffect(() => {
     fetch('/api/prices')
@@ -358,6 +375,7 @@ function Configurator({ boot }) {
 
   // Deo scene koji je sam objekat (lokacija, krovni prozori) ili prost broj (jedinice u nizu).
   function updatePart(key, patch) {
+    if (key === 'units' && lockRef.current) return
     apply(patch, (current) => ({ ...current, [key]: key === 'units' ? patch.units : { ...current[key], ...patch } }))
   }
 
@@ -370,6 +388,8 @@ function Configurator({ boot }) {
   }
 
   function updateDimension(key, value) {
+    // Paket „Uradi sam” zaključava osnovu. Visina ostaje slobodna.
+    if (lockRef.current && key !== 'height') return
     transient((current) => {
       const dimensions = { ...current.dimensions, [key]: clampDimension(key, value) }
       const nextDoor = clampDoor(current.door?.width ? current.door : { ...current.door, ...defaultDoorSize(dimensions) }, dimensions)
@@ -631,13 +651,32 @@ function Configurator({ boot }) {
     setSelected((current) => (current?.id === target.id ? null : current))
   }
 
-  const pages = ['/konfigurator', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda']
+  // Kupovina se vezuje za sačuvan projekat, pa se projekat prvo čuva.
+  function buyDiy() {
+    const { record } = saveProject()
+    openCheckout(diyOrder({ projectId: record.id, projectName: record.name, dimensions: record.scene.dimensions, units: record.scene.units }))
+  }
+
+  function unlockFromSubscription() {
+    const { record } = saveProject()
+    unlockProject(record.id)
+  }
+
+  const billing = {
+    access,
+    price: diyPrice(footprintArea(scene.dimensions, scene.units)),
+    onBuyDiy: buyDiy,
+    onUnlock: unlockFromSubscription,
+  }
+
+  const pages = ['/konfigurator', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda', '/paketi']
 
   return (
     <>
-      {path === '/majstori' && <CraftsmenPage scene={fullScene} projectName={projectNameOrDefault(projectName)} />}
+      {path === '/majstori' && <CraftsmenPage scene={fullScene} projectName={projectNameOrDefault(projectName)} billing={billing} />}
+      {path === '/paketi' && <PlansPage scene={fullScene} projectName={projectNameOrDefault(projectName)} billing={billing} />}
       {path === '/dozvole' && <PermitsPage />}
-      {path === '/ponuda' && <OfferPage scene={fullScene} projectName={projectNameOrDefault(projectName)} estimate={estimate} catalog={catalog} />}
+      {path === '/ponuda' && <OfferPage scene={fullScene} projectName={projectNameOrDefault(projectName)} estimate={estimate} catalog={catalog} billing={billing} />}
       {path === '/cene' && <PricesPage />}
       {path === '/radionica' && <WorkshopPage />}
       {path === '/partner' && <PartnerPage />}
@@ -657,6 +696,7 @@ function Configurator({ boot }) {
             onCanopyChange={updateCanopy}
             onPartChange={updatePart}
             partners={partners}
+            billing={billing}
             selected={selected}
             canUndo={canUndo}
             canRedo={canRedo}

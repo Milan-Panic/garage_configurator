@@ -4,7 +4,6 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { openPartners } from './partnerDb.js'
 
-export const COMMISSION_RATE = 0.1
 const DEMO_PASSWORD = 'radionica'
 const REMINDER_MS = 3 * 24 * 60 * 60 * 1000
 const PROJECT_ID = /^project-[a-z0-9-]{4,80}$/
@@ -130,6 +129,8 @@ export function openPlatform(root) {
   ensureColumn('inquiries', 'reminded_at', 'TEXT')
   ensureColumn('inquiries', 'approved_at', 'TEXT')
   ensureColumn('inquiries', 'rejected_at', 'TEXT')
+  // Provizija je dogovor sa svakim majstorom posebno. Kupac je ne vidi i ne plaća.
+  ensureColumn('craftsmen', 'commission_pct', 'REAL NOT NULL DEFAULT 0')
   seedCraftsmen()
   seedAdmin()
   openPartners(database, { hashPassword, checkPassword })
@@ -315,14 +316,6 @@ export function withdrawInquiry(customerKey, id) {
   return { error: 'Ovaj upit više ne može da se povuče.' }
 }
 
-export function payInquiry(customerKey, id) {
-  const row = database.prepare('SELECT * FROM inquiries WHERE id = ? AND customer_key = ?').get(id, clean(customerKey, 80))
-  if (!row) return { error: 'Upit nije pronađen.' }
-  if (row.status !== 'accepted') return { error: 'Naknada se plaća tek kad majstor prihvati i kaže cenu.' }
-  database.prepare(`UPDATE inquiries SET status = 'paid', paid_at = ? WHERE id = ?`).run(new Date().toISOString(), id)
-  return { inquiry: presentInquiry(database.prepare('SELECT * FROM inquiries WHERE id = ?').get(id), 'customer') }
-}
-
 export function workshopInquiries(craftsmanId) {
   return database.prepare(`
     SELECT * FROM inquiries
@@ -340,7 +333,8 @@ export function respondInquiry(craftsmanId, id, decision, price) {
   } else {
     const amount = Math.round(Number(price))
     if (!Number.isFinite(amount) || amount < 1000) return { error: 'Cena je iznos u dinarima, bar 1.000.' }
-    const fee = Math.round(amount * COMMISSION_RATE)
+    const terms = database.prepare('SELECT commission_pct FROM craftsmen WHERE id = ?').get(craftsmanId)
+    const fee = Math.round((amount * (Number(terms?.commission_pct) || 0)) / 100)
     database.prepare(`
       UPDATE inquiries
       SET status = 'accepted', craftsman_price = ?, fee_amount = ?, accepted_at = ?
@@ -354,6 +348,27 @@ export function listAdminInquiries() {
   return database.prepare('SELECT * FROM inquiries ORDER BY created_at DESC').all().map((row) => presentInquiry(row, 'admin'))
 }
 
+// Majstori sa dogovorenom provizijom, za admina.
+export function listCraftsmanTerms() {
+  return database.prepare('SELECT id, profession, shop, city, email, commission_pct FROM craftsmen ORDER BY city, shop').all().map((row) => ({
+    id: row.id,
+    profession: row.profession,
+    shop: row.shop,
+    city: row.city,
+    email: row.email,
+    commissionPct: row.commission_pct,
+  }))
+}
+
+export function setCraftsmanCommission(id, value) {
+  const pct = Math.round(Number(value) * 10) / 10
+  if (!Number.isFinite(pct) || pct < 0 || pct > 50) return { error: 'Provizija je procenat od 0 do 50.' }
+  const done = database.prepare('UPDATE craftsmen SET commission_pct = ? WHERE id = ?').run(pct, clean(id, 80))
+  if (!done.changes) return { error: 'Majstor nije pronađen.' }
+  return { craftsmen: listCraftsmanTerms() }
+}
+
+// Naknade koje su kupci platili po starom modelu. Ostaju kao istorija.
 export function paidFees() {
   return database.prepare(`SELECT * FROM inquiries WHERE status = 'paid' ORDER BY paid_at DESC`).all().map((row) => ({
     id: row.id,
@@ -488,7 +503,8 @@ function resumeTokenFor(visitorKey) {
 }
 
 function presentInquiry(row, role) {
-  const paid = row.status === 'paid'
+  // Kontakt se otvara čim majstor prihvati i kaže cenu. 'paid' je status iz starog modela.
+  const open = row.status === 'accepted' || row.status === 'paid'
   const craftsman = database.prepare('SELECT id, profession, shop, city, phone, email FROM craftsmen WHERE id = ?').get(row.craftsman_id)
   const sentAt = new Date(row.sent_at || row.created_at).getTime()
   const view = {
@@ -499,14 +515,12 @@ function presentInquiry(row, role) {
     projectName: row.project_name,
     orientationTotal: row.orientation_total,
     craftsmanPrice: row.craftsman_price,
-    feeAmount: row.fee_amount,
-    total: row.craftsman_price == null ? null : row.craftsman_price + row.fee_amount,
     craftsman: {
       id: craftsman?.id,
       profession: craftsman?.profession,
       shop: craftsman?.shop,
       city: craftsman?.city,
-      phone: role === 'admin' || (role === 'customer' && paid) ? craftsman?.phone : undefined,
+      phone: role === 'admin' || (role === 'customer' && open) ? craftsman?.phone : undefined,
       email: role === 'admin' ? craftsman?.email : undefined,
     },
   }
@@ -515,11 +529,13 @@ function presentInquiry(row, role) {
     view.canSwitch = row.status === 'sent' && Date.now() - sentAt >= REMINDER_MS
   }
   if (role === 'craftsman' || role === 'admin') {
+    // Provizija je između platforme i majstora, pa je kupac ne dobija ni u odgovoru servera.
+    view.feeAmount = row.fee_amount || 0
     view.note = row.note
     view.estimate = parseJson(row.estimate_json)
     view.views = parseJson(row.views_json) ?? []
   }
-  if (role === 'admin' || (role === 'craftsman' && paid)) {
+  if (role === 'admin' || (role === 'craftsman' && open)) {
     view.customer = {
       name: row.customer_name,
       phone: row.customer_phone,
