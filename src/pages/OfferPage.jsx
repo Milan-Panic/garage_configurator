@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react'
 import { ArrowLeft, Printer } from 'lucide-react'
 import { buildingType } from '../buildings'
+import { accessLabel } from '../billing/entitlements'
+import { useBilling } from '../billing/paymentService'
+import { AssemblySheet, CuttingSheet, PanelSheet, PositionsSheet, ShoppingSheet, SlabSheet } from '../components/DiySheets'
+import { positionLookup } from '../cutting'
 import { ElevationSheet, PlanSheet, RoofPlanSheet, SectionSheet } from '../components/Drawings'
+import { LockedPreview } from '../components/LockedPreview'
 import { GarageView } from '../components/GarageView'
 import { PatternSwatch } from '../components/PatternSwatch'
 import { LogoMark } from '../components/SiteHeader'
@@ -22,7 +27,15 @@ const SHOTS = [
 const num = (value, digits = 2) => value.toFixed(digits).replace('.', ',')
 const qty = (value) => (Number.isInteger(value) ? String(value) : num(value))
 
-export function OfferPage({ scene, projectName, estimate, catalog }) {
+export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
+  const { access } = billing
+  const full = access.full
+  const company = useBilling().company
+  // Paket Pro: u zaglavlju i podnožju stoje podaci firme umesto oznake Mera.
+  const brand = access.branding && company.name ? company : null
+  const brandName = brand ? brand.name : 'Mera'
+  // Brojevi pozicija na crtežima vode na spisak profila.
+  const marks = useMemo(() => positionLookup(estimate), [estimate])
   const [shots, setShots] = useState({})
   const [customer, setCustomer] = useState('')
   const [place, setPlace] = useState('')
@@ -143,16 +156,17 @@ export function OfferPage({ scene, projectName, estimate, catalog }) {
           <Printer size={15} />
           Štampaj ili sačuvaj kao PDF
         </button>
+        {accessLabel(access) && <p className="w-full text-xs text-stone-600">{accessLabel(access)}</p>}
       </div>
 
       {/* 1. Naslovna */}
-      <Page number={1} code={number}>
+      <Page brand={brandName} number={1} code={number}>
         <header className="flex items-start justify-between gap-6">
           <div className="flex items-center gap-3">
-            <LogoMark size={44} />
+            {brand ? brand.logo && <img src={brand.logo} alt="" className="h-11 w-auto" /> : <LogoMark size={44} />}
             <div>
-              <p className="text-xl font-bold tracking-tight text-stone-950">Mera</p>
-              <p className="text-xs text-stone-500">Montažni objekti po meri</p>
+              <p className="text-xl font-bold tracking-tight text-stone-950">{brandName}</p>
+              <p className="text-xs text-stone-500">{brand ? brand.details : 'Montažni objekti po meri'}</p>
             </div>
           </div>
           <div className="text-right text-xs leading-relaxed text-stone-600">
@@ -185,7 +199,7 @@ export function OfferPage({ scene, projectName, estimate, catalog }) {
       </Page>
 
       {/* 2. Prikazi i materijali */}
-      <Page number={2} code={number} title="Prikazi i materijali">
+      <Page brand={brandName} number={2} code={number} title="Prikazi i materijali">
         <div className="grid grid-cols-2 gap-3">
           {SHOTS.slice(1).map((shot, index) => (
             <figure key={shot.id} className={index === 2 ? 'col-span-2' : ''}>
@@ -210,26 +224,29 @@ export function OfferPage({ scene, projectName, estimate, catalog }) {
         </div>
       </Page>
 
+      {full ? (
+        <>
       {/* 3. Osnova i krov */}
-      <Page number={3} code={number} title="Osnova i krovna konstrukcija">
+      <Page brand={brandName} number={3} code={number} title="Osnova i krovna konstrukcija">
         <PlanSheet scene={scene} />
         <div className="mt-4">
-          <RoofPlanSheet scene={scene} />
+          <RoofPlanSheet scene={scene} marks={marks} />
         </div>
+        <p className="mt-2 text-[10px] text-stone-500">Broj u krugu je pozicija sa spiska profila. Stubovi, pojasevi i zidne dijagonale označeni su na izgledima.</p>
       </Page>
 
       {/* 4. Izgledi */}
-      <Page number={4} code={number} title="Izgledi">
+      <Page brand={brandName} number={4} code={number} title="Izgledi">
         <div className="space-y-3">
           {['front', 'back', 'left', 'right'].map((id) => (
-            <ElevationSheet key={id} scene={scene} wall={id} />
+            <ElevationSheet key={id} scene={scene} wall={id} marks={marks} />
           ))}
         </div>
       </Page>
 
       {/* 5. Presek i provera nosača */}
-      <Page number={5} code={number} title="Presek i provera krovnog nosača">
-        <SectionSheet scene={scene} />
+      <Page brand={brandName} number={5} code={number} title="Presek i provera krovnog nosača">
+        <SectionSheet scene={scene} marks={marks} />
         <table className="mt-5 w-full text-sm">
           <tbody>
             {check.map(([label, value, comment]) => (
@@ -250,7 +267,7 @@ export function OfferPage({ scene, projectName, estimate, catalog }) {
       </Page>
 
       {/* 6. Predmer i cena po stavkama */}
-      <Page number={6} code={number} title="Predmer i orijentaciona cena po stavkama">
+      <Page brand={brandName} number={6} code={number} title="Predmer i orijentaciona cena po stavkama">
         <table className="w-full border-collapse text-[11px] leading-snug">
           <thead>
             <tr className="border-b-2 border-stone-900 text-left text-[10px] tracking-wide text-stone-500 uppercase">
@@ -296,8 +313,43 @@ export function OfferPage({ scene, projectName, estimate, catalog }) {
         <p className="mt-2 text-[10px] text-stone-500">Stavke sa crticom nemaju cenu u cenovniku i nisu u zbiru. Rad majstora, prevoz i PDV nisu uračunati.</p>
       </Page>
 
-      {/* 7. Napomene */}
-      <Page number={7} code={number} title="Upozorenja i napomene">
+      <Page brand={brandName} number={7} code={number} title="Spisak profila po pozicijama">
+        <PositionsSheet estimate={estimate} />
+      </Page>
+
+      <Page brand={brandName} number={8} code={number} title="Raspored rezanja profila">
+        <CuttingSheet estimate={estimate} />
+      </Page>
+
+      <Page brand={brandName} number={9} code={number} title="Raspored tabli lima i panela">
+        <PanelSheet scene={scene} />
+      </Page>
+
+      <Page brand={brandName} number={10} code={number} title="Betonska ploča, montaža i alat">
+        <SlabSheet scene={scene} estimate={estimate} />
+        <h3 className="mt-5 mb-2 border-b border-stone-300 pb-1 text-sm font-semibold text-stone-950">Redosled montaže</h3>
+        <AssemblySheet scene={scene} estimate={estimate} />
+      </Page>
+
+      <Page brand={brandName} number={11} code={number} title="Lista za nabavku">
+        <ShoppingSheet estimate={estimate} />
+      </Page>
+        </>
+      ) : (
+        <section className="no-print mx-auto my-6 w-[210mm] max-w-full bg-white p-[14mm] shadow-xl">
+          <h2 className="mb-1 text-2xl leading-tight font-bold text-stone-950">Crteži, spisak profila i raspored rezanja</h2>
+          <p className="mb-4 max-w-xl text-sm leading-relaxed text-stone-600">
+            Ove dve strane su besplatan sažetak. Paket dodaje devet strana: crteže sa kotama i pozicijama, predmer po stavkama, spisak profila
+            sa uglovima rezanja, raspored rezanja po šipkama od 6 m, raspored tabli lima, betonsku ploču, redosled montaže i listu za nabavku.
+          </p>
+          <div className="max-w-md">
+            <LockedPreview title="Dokumentacija za izradu je zaključana" text="Otključava se za ovaj projekat i može da se štampa koliko god puta treba dok paket važi." billing={billing} />
+          </div>
+        </section>
+      )}
+
+      {/* Napomene */}
+      <Page brand={brandName} number={full ? 12 : 3} code={number} title="Upozorenja i napomene">
         {estimate.warnings.length > 0 && (
           <ul className="space-y-1.5">
             {estimate.warnings.map((warning) => (
@@ -323,20 +375,22 @@ export function OfferPage({ scene, projectName, estimate, catalog }) {
         </div>
         <div className="mt-10 grid grid-cols-2 gap-10 text-xs text-stone-500">
           <div className="border-t border-stone-400 pt-1">Kupac</div>
-          <div className="border-t border-stone-400 pt-1">Mera</div>
+          <div className="border-t border-stone-400 pt-1">{brandName}</div>
         </div>
       </Page>
     </div>
   )
 }
 
-function Page({ number, code, title, children }) {
+function Page({ number, code, title, children, brand = 'Mera' }) {
   return (
     <section className="offer-page relative mx-auto my-6 flex min-h-[297mm] w-[210mm] max-w-full flex-col bg-white p-[14mm] shadow-xl">
       {title && <h2 className="mb-4 border-b border-stone-300 pb-2 text-lg font-semibold text-stone-950">{title}</h2>}
       <div className="flex-1">{children}</div>
       <footer className="mt-4 flex justify-between border-t border-stone-200 pt-2 text-[10px] text-stone-400">
-        <span>Mera · {code}</span>
+        <span>
+          {brand} · {code}
+        </span>
         <span>strana {number}</span>
       </footer>
     </section>

@@ -12,6 +12,7 @@ import {
   Home,
   FileText,
   Layers,
+  Lock,
   MapPin,
   PackagePlus,
   Palette,
@@ -35,6 +36,9 @@ import { ALTITUDE_LIMITS, DEFAULT_SITE, PLACES, WIND_OPTIONS, snowLoad } from '.
 import { DEFAULT_SKYLIGHTS, SKYLIGHT_KINDS, SKYLIGHT_LIMITS } from '../skylights'
 import { DIMENSION_LIMITS, LIGHT_STRUCTURE, formatMeters } from '../config'
 import { hingeCount } from '../estimate'
+import { accessLabel, formatDate, projectAccess } from '../billing/entitlements'
+import { useBilling } from '../billing/paymentService'
+import { LockedPreview } from './LockedPreview'
 import {
   DOOR_MATERIALS,
   DOOR_STYLES,
@@ -266,8 +270,9 @@ export function ControlPanel(props) {
 
 /* ---------- Objekat ---------- */
 
-function ShapeTab({ scene, estimate, onDimensionChange, onSceneChange, onRoofChange, onPartChange, onSettle }) {
+function ShapeTab({ scene, estimate, billing, onDimensionChange, onSceneChange, onRoofChange, onPartChange, onSettle }) {
   const { dimensions, roof } = scene
+  const lock = billing.access.lock
   const site = scene.site || DEFAULT_SITE
   const skylights = scene.skylights || DEFAULT_SKYLIGHTS
   const units = scene.units || 1
@@ -320,8 +325,9 @@ function ShapeTab({ scene, estimate, onDimensionChange, onSceneChange, onRoofCha
                 key={size.id}
                 type="button"
                 aria-pressed={active}
+                disabled={Boolean(lock)}
                 onClick={() => applySize(size)}
-                className={`rounded-lg border px-2 py-1.5 text-left transition ${
+                className={`rounded-lg border px-2 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   active ? 'border-accent-500 bg-accent-50' : 'border-stone-200 bg-white hover:border-stone-400'
                 }`}
               >
@@ -347,9 +353,19 @@ function ShapeTab({ scene, estimate, onDimensionChange, onSceneChange, onRoofCha
               onChange={(value) => onDimensionChange(key, value)}
               onSettle={onSettle}
               showRange
+              disabled={Boolean(lock) && key !== 'height'}
             />
           )
         })}
+        {lock && (
+          <p className="flex gap-2 rounded-lg bg-tape-soft px-3 py-2 text-sm leading-snug text-stone-900 ring-1 ring-tape">
+            <Lock size={15} className="mt-0.5 shrink-0" />
+            <span>
+              Širina i dužina su zaključane kupovinom paketa Uradi sam, jer je cena paketa vezana za površinu. Visinu i sve ostalo menjaš slobodno.{' '}
+              <strong className="font-semibold">Paket važi do {formatDate(billing.access.expiresAt)}</strong>
+            </span>
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-2">
           <Stat label="Površina" value={`${(footprint * units).toFixed(1).replace('.', ',')} m²`} />
           <Stat label={roof.kind === 'flat' ? 'Visina' : 'Do slemena'} value={formatMeters(dimensions.height + roofShape.rise)} />
@@ -367,6 +383,7 @@ function ShapeTab({ scene, estimate, onDimensionChange, onSceneChange, onRoofCha
           formatValue={(value) => (value > 1 ? `${value} jedinice` : 'Jedan objekat')}
           onChange={(next) => onPartChange('units', { units: next })}
           onSettle={onSettle}
+          disabled={Boolean(lock)}
         />
         {units > 1 && <Hint>Iste jedinice se ređaju bok uz bok, kao garaže u nizu. Mere iznad važe za jednu jedinicu.</Hint>}
       </Section>
@@ -1310,7 +1327,9 @@ function OffersSection({ scene, estimate, partners, onSceneChange }) {
   )
 }
 
-function EstimateTab({ scene, estimate, quote, total, partners, onSceneChange }) {
+function EstimateTab({ scene, estimate, quote, total, partners, billing, onSceneChange }) {
+  const full = billing.access.full
+  const status = accessLabel(billing.access)
   const [copied, setCopied] = useState(false)
   const sections = []
   estimate.lines.forEach((entry) => {
@@ -1369,9 +1388,16 @@ function EstimateTab({ scene, estimate, quote, total, partners, onSceneChange })
         </p>
       ))}
 
-      <div className="grid grid-cols-2 gap-2">
-        <SoftButton icon={copied ? Check : ClipboardCopy} label={copied ? 'Kopirano' : 'Kopiraj spisak'} onClick={copyList} />
-        <SoftButton icon={Send} label="Crteži i upit" onClick={() => navigate('/majstori')} />
+      {status && (
+        <p className="flex items-center gap-2 rounded-lg bg-tape-soft px-3 py-2 text-sm font-medium text-stone-900 ring-1 ring-tape">
+          <Check size={15} className="shrink-0" />
+          {status}
+        </p>
+      )}
+
+      <div className={`grid gap-2 ${full ? 'grid-cols-2' : ''}`}>
+        {full && <SoftButton icon={copied ? Check : ClipboardCopy} label={copied ? 'Kopirano' : 'Kopiraj spisak'} onClick={copyList} />}
+        <SoftButton icon={Send} label="Pošalji upit majstoru" onClick={() => navigate('/majstori')} />
       </div>
       <button
         type="button"
@@ -1379,14 +1405,21 @@ function EstimateTab({ scene, estimate, quote, total, partners, onSceneChange })
         className="flex w-full items-center justify-center gap-2 rounded-lg bg-stone-900 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-stone-700"
       >
         <FileText size={15} />
-        Ponuda za štampu i PDF
+        {full ? 'Dokumentacija za štampu i PDF' : 'Sažetak za štampu i PDF'}
       </button>
 
       <OffersSection scene={scene} estimate={estimate} partners={partners} onSceneChange={onSceneChange} />
 
       <Section icon={ScrollText} title="Spisak materijala">
-        <div className="space-y-2">
-          {sections.map((section, index) => (
+        {!full && (
+          <LockedPreview
+            title="Detaljan spisak je u paketu Uradi sam"
+            text="Svaki profil sa dužinom, table, okov i samorezi po komadu, raspored rezanja i crteži sa kotama. Zbir po poslovima iznad ostaje besplatan."
+            billing={billing}
+          />
+        )}
+        <div className={full ? 'space-y-2' : 'hidden'}>
+          {(full ? sections : []).map((section, index) => (
             <details key={section.label} open={index < 2} className="group rounded-lg bg-white ring-1 ring-stone-200">
               <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-sm font-medium text-stone-900">
                 {section.label}
@@ -1421,7 +1454,8 @@ function EstimateTab({ scene, estimate, quote, total, partners, onSceneChange })
 
 /* ---------- Projekti ---------- */
 
-function ProjectsTab({ projects, activeProjectId, projectDirty, onSaveProject, onNewProject, onOpenProject, onDeleteProject }) {
+function ProjectsTab({ projects, activeProjectId, projectDirty, billing, onSaveProject, onNewProject, onOpenProject, onDeleteProject }) {
+  const billingState = useBilling()
   const [pending, setPending] = useState(null)
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const active = projects.find((project) => project.id === activeProjectId) ?? null
@@ -1483,6 +1517,8 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, onSaveProject, o
           {projects.map((project) => {
             const open = project.id === activeProjectId
             const confirming = pendingDeleteId === project.id
+            const access = projectAccess(billingState, project.id)
+            const badge = accessLabel(access)
             return (
               <li key={project.id} className={`rounded-lg bg-white px-2 py-1.5 ring-1 ${open ? 'ring-accent-400' : 'ring-stone-200'}`}>
                 <div className="flex items-center gap-1">
@@ -1506,6 +1542,16 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, onSaveProject, o
                     <Trash2 size={14} />
                   </button>
                 </div>
+                {badge && (
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 pb-1.5 text-xs text-stone-700">
+                    <span className={`rounded-sm px-1.5 py-0.5 ${access.full ? 'bg-tape-soft' : 'bg-stone-100'}`}>{badge}</span>
+                    {open && access.expired && !access.full && (
+                      <button type="button" onClick={billing.onBuyDiy} className="font-semibold text-stone-900 underline underline-offset-2">
+                        Obnovi paket
+                      </button>
+                    )}
+                  </p>
+                )}
                 {confirming && (
                   <div className="flex gap-2 px-2 pb-1">
                     <button
@@ -1631,15 +1677,18 @@ function Segmented({ label, value, options, onChange, columns }) {
   )
 }
 
-function Slider({ label, value, min, max, step = 0.05, onChange, onSettle, formatValue = formatMeters, showRange = false }) {
-  const locked = max - min < 0.001
+function Slider({ label, value, min, max, step = 0.05, onChange, onSettle, formatValue = formatMeters, showRange = false, disabled = false }) {
+  const locked = disabled || max - min < 0.001
   const upper = Math.max(min, max)
   const shown = Math.min(Math.max(value, min), upper)
-  const percent = locked ? 0 : ((shown - min) / (upper - min)) * 100
+  const percent = upper - min < 0.001 ? 0 : ((shown - min) / (upper - min)) * 100
   return (
     <label className="block">
       <span className="mb-1.5 flex items-center justify-between text-sm">
-        <span className="text-stone-700">{label}</span>
+        <span className="flex items-center gap-1.5 text-stone-700">
+          {label}
+          {disabled && <Lock size={12} aria-label="zaključano" />}
+        </span>
         <span className="rounded-md bg-white px-1.5 py-0.5 font-medium text-stone-900 tabular-nums ring-1 ring-stone-200">{formatValue(value)}</span>
       </span>
       <input

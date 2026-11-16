@@ -5,7 +5,7 @@ import { FLOOR_LEVEL, PANEL_THICKNESS, ROOF_OVERHANG, ROOF_THICKNESS } from '../
 import { WALL_IDS, wallFrame } from '../layout'
 import { roofGeometry } from '../roof'
 import { roomBox, roomKind } from '../rooms'
-import { openingsByWall, structureFrame, wallLength } from '../structure'
+import { openingsByWall, segmentLength, structureFrame, wallLength } from '../structure'
 
 const INK = '#1c1917'
 const MID = '#57534e'
@@ -144,6 +144,28 @@ function Hatch({ id, color = SOFT, gap = 5 }) {
       <line x1="0" y1="0" x2="0" y2={gap} stroke={color} strokeWidth="0.9" />
     </pattern>
   )
+}
+
+// Nazivi krovnog nosača u računici, zavisno od vrste krova.
+const RAFTER_PARTS = ['Krovni nosači', 'Rogovi', 'Rešetkasti nosači, gornji pojas']
+
+// Broj pozicije u krugu, kao na radioničkom crtežu. Vodi na spisak profila.
+function Balloons({ items }) {
+  return items
+    .filter((item) => item.mark != null)
+    .map((item, index) => (
+      <g key={index}>
+        <circle cx={item.x} cy={item.y} r="7.5" fill={PAPER} stroke={INK} strokeWidth="1" />
+        <text x={item.x} y={item.y + 3} textAnchor="middle" fontSize="8.5" fontWeight="700" fill={INK}>
+          {item.mark}
+        </text>
+      </g>
+    ))
+}
+
+// Tačka na delu konstrukcije, na udelu t od početka.
+function along(segment, t) {
+  return segment.a.map((value, index) => value + (segment.b[index] - value) * t)
 }
 
 function wallPoint(wall, u) {
@@ -451,7 +473,7 @@ function CanopyOnPlan({ scene, X, Y, scale }) {
 
 /* ---------- Plan krovne konstrukcije ---------- */
 
-export function RoofPlanSheet({ scene }) {
+export function RoofPlanSheet({ scene, marks: positions = null }) {
   const { width, length } = scene.dimensions
   const view = { w: 780, h: 660 }
   const pad = { left: 80, right: 96, top: 60, bottom: 96 }
@@ -468,6 +490,21 @@ export function RoofPlanSheet({ scene }) {
   const front = Y(length / 2)
   const right = X(width / 2)
   const ridgeAlongLength = scene.roof.ridge === 'length'
+  const balloons = []
+  if (positions) {
+    // Isti deo se označava jednom; spregovi svaki, jer ih je malo.
+    const seen = new Set()
+    const add = (segment, parts, t, every = false) => {
+      const mark = positions(parts, segmentLength(segment))
+      if (mark == null || (!every && seen.has(mark))) return
+      seen.add(mark)
+      const point = along(segment, t)
+      balloons.push({ mark, x: X(point[0]), y: Y(point[2]) })
+    }
+    frame.rafters.forEach((segment) => add(segment, RAFTER_PARTS, 0.3))
+    frame.purlins.forEach((segment) => add(segment, 'Rožnjače', 0.72))
+    frame.braces.filter((brace) => brace.kind === 'krov').forEach((segment) => add(segment, 'Krovni spregovi', 0.5, true))
+  }
 
   return (
     <Sheet title="Plan krovne konstrukcije" note={frame.truss ? 'Rešetkasti nosači, rožnjače i spregovi' : 'Nosači, rožnjače i spregovi'} width={view.w} height={view.h} scale={scale}>
@@ -523,6 +560,7 @@ export function RoofPlanSheet({ scene }) {
           Raspon {dec(sizing.span)} m · sneg {dec(sizing.snow)} kN/m² · opterećenje {dec(sizing.load)} kN/m
         </text>
       </g>
+      <Balloons items={balloons} />
     </Sheet>
   )
 }
@@ -531,7 +569,7 @@ export function RoofPlanSheet({ scene }) {
 
 const WALL_TITLES = { front: 'Izgled spreda', back: 'Izgled otpozadi', left: 'Izgled sleva', right: 'Izgled zdesna' }
 
-export function ElevationSheet({ scene, wall: wallId }) {
+export function ElevationSheet({ scene, wall: wallId, marks: positions = null }) {
   const uid = useId().replace(/:/g, '')
   const { dimensions } = scene
   const { height } = dimensions
@@ -589,6 +627,21 @@ export function ElevationSheet({ scene, wall: wallId }) {
   const hiddenLine = (segment, key, extra) => (
     <line key={key} x1={X(toH(segment.a))} y1={Y(segment.a[1] - FLOOR_LEVEL)} x2={X(toH(segment.b))} y2={Y(segment.b[1] - FLOOR_LEVEL)} {...extra} />
   )
+  const balloons = []
+  if (positions) {
+    const at = (segment, t) => {
+      const point = along(segment, t)
+      return { x: X(toH(point)), y: Y(point[1] - FLOOR_LEVEL) }
+    }
+    posts.forEach((post) => balloons.push({ mark: positions('Stubovi', post.height), x: X(toH([post.x, 0, post.z])), y: Y(Math.min(0.45, post.height / 2)) }))
+    const girt = hidden(frame.girts)[0]
+    if (girt) balloons.push({ mark: positions('Zidni pojasevi', span), ...at(girt, 0.5) })
+    hidden(frame.headers).forEach((segment) => balloons.push({ mark: positions('Nadvratnici', segmentLength(segment)), ...at(segment, 0.5) }))
+    hidden(frame.braces).forEach((segment) => balloons.push({ mark: positions('Zidna ukrućenja', segmentLength(segment)), ...at(segment, 0.5) }))
+    // Venac ide po vrhu zida; na kosom zidu je duži od zida.
+    const drop = underAt(-span / 2 + 0.05, 0) - underAt(span / 2 - 0.05, 0)
+    balloons.push({ mark: positions('Venci', Math.hypot(span, drop)), x: X(span * 0.27), y: Y(underAt(span * 0.27, 0) - 0.14) })
+  }
 
   return (
     <Sheet title={WALL_TITLES[wallId]} note={`${wall.label} · isprekidano je skelet iza obloge`} width={view.w} height={view.h} scale={scale}>
@@ -687,13 +740,14 @@ export function ElevationSheet({ scene, wall: wallId }) {
           {scene.roof.kind === 'mono' ? 'jedna voda' : 'dve vode'}, nagib {scene.roof.pitch}°
         </text>
       )}
+      <Balloons items={balloons} />
     </Sheet>
   )
 }
 
 /* ---------- Presek ---------- */
 
-export function SectionSheet({ scene }) {
+export function SectionSheet({ scene, marks: positions = null }) {
   const uid = useId().replace(/:/g, '')
   const { dimensions } = scene
   const { height } = dimensions
@@ -728,6 +782,23 @@ export function SectionSheet({ scene }) {
   const carLength = car ? Math.min(car.length, span - 1.6) : 0
   const floor = FLOOR_LEVEL
   const person = span / 2 - 0.7
+  const balloons = []
+  if (positions) {
+    const seen = new Set()
+    const add = (segment, parts, t) => {
+      const mark = positions(parts, segmentLength(segment))
+      if (mark == null || seen.has(mark)) return
+      seen.add(mark)
+      const point = along(segment, t)
+      balloons.push({ mark, x: X(horizontal(point)), y: Y(point[1]) })
+    }
+    const lower = frame.truss ? 'Rešetkasti nosači, donji pojas' : 'Zatege vezača'
+    const fill = frame.truss ? 'Rešetkasti nosači, ispuna' : 'Zatege vezača'
+    pick(frame.rafters).forEach((segment) => add(segment, RAFTER_PARTS, 0.35))
+    pick(frame.chords).forEach((segment) => add(segment, lower, 0.62))
+    pick(frame.ties).forEach((segment) => add(segment, lower, 0.62))
+    ;[...pick(frame.webs), ...pick(frame.kings)].forEach((segment) => add(segment, fill, 0.5))
+  }
 
   return (
     <Sheet title="Poprečni presek" note={`Presek kroz nosač, ${alongX ? 'po širini' : 'po dužini'} objekta`} width={view.w} height={view.h} scale={scale}>
@@ -811,6 +882,7 @@ export function SectionSheet({ scene }) {
           Ploča 15 cm na tamponu · stubova {frame.posts.length} · zidni pojasevi u {frame.girtRows} {frame.girtRows === 1 ? 'redu' : 'reda'}
         </text>
       </g>
+      <Balloons items={balloons} />
     </Sheet>
   )
 }

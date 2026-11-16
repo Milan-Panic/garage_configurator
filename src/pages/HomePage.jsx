@@ -96,14 +96,14 @@ const SAMPLES = [
 
 const STEPS = [
   { title: 'Složi objekat', text: 'Garaža, ostava, radionica ili magacin. Mere, krov, fasada, vrata i dodaci, a sačuvano ostaje u ovom pregledaču.' },
-  { title: 'Vidi računicu', text: 'Spisak profila, tabli i okova kakav pravi majstor, i orijentaciona cena po poslu. Menja se dok menjaš objekat.' },
+  { title: 'Vidi računicu', text: 'Orijentaciona cena i zbir po poslovima, besplatno. Menja se dok menjaš objekat.' },
   { title: 'Izaberi ponudu', text: 'Kad firme imaju cene, vidiš komplet ponudu za svoj objekat. Materijal za jedan paket ide od jedne firme.' },
   { title: 'Pošalji upit', text: 'Svaki posao ide majstoru koji ima taj skil. Ime, imejl i telefon ostavljaš tek tada.' },
 ]
 
 const FEATURES = [
   { title: 'Lim i paneli', text: `${WALL_MATERIALS.length} obloga zidova, ${ROOF_MATERIALS.length} krovnih pokrivača, ${DOOR_MATERIALS.length} završnih obrada vrata i RAL boje.` },
-  { title: 'Crteži sa kotama', text: 'Tlocrt i dve fasade sa merama otvora i stubova, da majstor odmah vidi šta radi.' },
+  { title: 'Crteži sa kotama', text: 'Osnova, fasade i presek sa merama otvora i stubova. Majstor ih dobija uz upit, a ti u paketu Uradi sam.' },
   { title: 'Dodaci po izboru', text: 'Nadstrešnica, ventilacija, solarni paneli i struja ulaze u istu računicu.' },
   { title: 'Majstor za taj deo', text: 'Oluk limaru, ploča betonaru, vrata monteru. Jedan majstor može da pokrije više poslova.' },
 ]
@@ -111,9 +111,11 @@ const FEATURES = [
 const QUESTIONS = [
   ['Da li je cena ponuda?', 'Ne. To je orijentacija iz materijala i mera. Ponuda je cena koju majstor unese kad prihvati upit.'],
   ['Da li treba nalog?', 'Ne. Crtež se pamti u pregledaču. Ime, prezime, imejl i telefon traže se tek na upitu.'],
-  ['Kada majstor dobija moj broj?', 'Kad se plati naknada od 10% na cenu koju je uneo. Ostatak cene ide direktno njemu.'],
+  ['Kada majstor dobija moj broj?', 'Kad prihvati upit i unese svoju cenu. Tada i ti vidiš njegov telefon. Upit i kontakt ne plaćaš.'],
+  ['Šta se plaća?', 'Dokumentacija za izradu: crteži sa kotama, spisak profila, raspored rezanja i lista za nabavku. Konfigurator, orijentaciona cena i upiti su besplatni. Cene su na strani Paketi.'],
   ['Da li je ponuda firme konačna?', 'Ne. Računa se iz cenovnika firme za tvoje količine. Firma potvrđuje konačnu cenu i dostavu kad dobije upit.'],
   ['Ko vidi moje projekte?', 'Samo pregledač u kom su sačuvani. Link iz imejla otvara iste projekte na drugom uređaju.'],
+  ['Mogu li da menjam objekat posle kupovine paketa?', 'Paket Uradi sam zaključava širinu i dužinu, jer je cena vezana za površinu. Visinu, krov, fasadu, vrata, prozore i dodatke menjaš 30 dana i štampaš dokumentaciju koliko god puta treba.'],
   ['Da li je ovo statički proračun?', 'Ne. Preseci profila su uobičajeni za lake montažne objekte. Za velike raspone treba statičar, a sajt upozorava kad mere pređu tu granicu.'],
   ['Da li mi treba dozvola?', 'Zavisi od toga čemu objekat služi i gde stoji. Kratak pregled je u Vodiču za dozvole, a konačan odgovor daje opštinski urbanizam.'],
 ]
@@ -176,7 +178,7 @@ export function HomePage({ onStartFrom }) {
             Složi {sample.object} po meri pre nego što pozoveš majstora.
           </h1>
           <p className="mt-5 max-w-[34rem] text-lg leading-relaxed text-stone-700">
-            Probaj odmah: izaberi objekat i povuci kote. Model, spisak materijala i orijentaciona cena prate svaku
+            Probaj odmah: izaberi objekat i povuci kote. Model i orijentaciona cena prate svaku
             izmenu, a upit ide majstorima i firmama tek kad ti odlučiš.
           </p>
 
