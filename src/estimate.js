@@ -7,6 +7,7 @@ import { FLOOR_FINISHES, FRAME_COLORS, ROOF_MATERIALS, WALL_MATERIALS, findMater
 import { roofGeometry, roofMetrics } from './roof'
 import { roomBlocksOpening, roomBox, roomKind } from './rooms'
 import { placeName } from './site'
+import { wallSheets } from './sheets'
 import { skylightLayout } from './skylights'
 import { POST_SPACING, TRUSS_SPAN_LIMIT, profileSet, segmentLength, structureFrame } from './structure'
 
@@ -34,13 +35,23 @@ export function buildEstimate(scene) {
   const sizing = frame.sizing
   const lengthsOf = (segments) => segments.map(segmentLength)
   const section = profiles.post
-  pushCuts(lines, 'Konstrukcija', `Stubovi, ${section.name}`, frame.posts.map((post) => post.height), section.priceId)
+  // Ugao reza je otklon od ravnog reza, kako se podešava na testeri.
+  const pitch = geometry.radians ? (geometry.radians * 180) / Math.PI : 0
+  const plumb = (segments) => segments.map((segment) => [inclination(segment), inclination(segment)])
+  const against = (segments, reference) => segments.map((segment) => {
+    const angle = 90 - angleBetween(segment, reference(segment))
+    return [angle, angle]
+  })
+  // Stub je dole ravan, a gore prati nagib krova.
+  pushCuts(lines, 'Konstrukcija', `Stubovi, ${section.name}`, frame.posts.map((post) => post.height), section.priceId, frame.posts.map(() => [0, pitch]))
   notes.push(
     `Stubovi idu na uglove i na svakih najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m. Uz vrata stoje dovratnici, a stub koji bi pao u prozor pomeren je uz njegovu ivicu. Presek je uobičajen za lake montažne objekte: do 4,5 m i 2,7 m visine stub 80×80×2, preko toga 80×80×3, preko 6,5 m ili 3,2 m visine 100×100×3. Ovo nije statički proračun.`,
   )
 
   const plates = plateLengths(dimensions, metrics)
-  pushCuts(lines, 'Konstrukcija', `Venci, ${profiles.plate.name}`, plates, profiles.plate.priceId)
+  const slopingWalls = metrics.roof.kind !== 'mono' ? [] : metrics.roof.fall === 'front' || metrics.roof.fall === 'back' ? ['left', 'right'] : ['front', 'back']
+  const plateEnds = ['front', 'back', 'left', 'right'].map((id) => (slopingWalls.includes(id) ? [pitch, pitch] : [0, 0]))
+  pushCuts(lines, 'Konstrukcija', `Venci, ${profiles.plate.name}`, plates, profiles.plate.priceId, plateEnds)
   const girts = []
   for (let row = 0; row < frame.girtRows; row += 1) girts.push(dimensions.width, dimensions.width, dimensions.length, dimensions.length)
   pushCuts(lines, 'Konstrukcija', `Zidni pojasevi, ${profiles.girt.name}`, girts, profiles.girt.priceId)
@@ -50,17 +61,20 @@ export function buildEstimate(scene) {
 
   if (frame.truss) {
     const bottom = frame.chords.length ? frame.chords : frame.ties
-    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, gornji pojas, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId)
-    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, donji pojas, ${profiles.tie.name}`, lengthsOf(bottom), profiles.tie.priceId)
-    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, ispuna, ${profiles.web.name}`, lengthsOf([...frame.webs, ...frame.kings]), profiles.web.priceId)
+    const fill = [...frame.webs, ...frame.kings]
+    // Ispuna naleže na pojas: kod paralelnih pojaseva na gornji, kod dve vode na zategu.
+    const chordOf = () => (roof.kind === 'duo' ? frame.ties[0] : frame.rafters[0])
+    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, gornji pojas, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId, plumb(frame.rafters))
+    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, donji pojas, ${profiles.tie.name}`, lengthsOf(bottom), profiles.tie.priceId, plumb(bottom))
+    pushCuts(lines, 'Konstrukcija', `Rešetkasti nosači, ispuna, ${profiles.web.name}`, lengthsOf(fill), profiles.web.priceId, chordOf() ? against(fill, chordOf) : undefined)
     pushCuts(lines, 'Konstrukcija', `Rožnjače, ${profiles.purlin.name}`, lengthsOf(frame.purlins), profiles.purlin.priceId)
     notes.push(`Rešetkasti nosači stoje na ${fmt(sizing.spacing)} m, visine ${fmt(frame.trussDepth)} m, a lim nose rožnjače. Rešetka se vari u radionici i donosi u komadu.`)
     if (roof.kind !== 'duo') notes.push(`Donji pojas rešetke je ${fmt(frame.trussDepth)} m ispod krova, pa je toliko manja slobodna visina ispod nosača.`)
   } else if (frame.purlins.length === 0) {
-    pushCuts(lines, 'Konstrukcija', `Krovni nosači, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId)
+    pushCuts(lines, 'Konstrukcija', `Krovni nosači, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId, plumb(frame.rafters))
     notes.push('Krovni nosači idu preko kraćeg raspona na najviše 1,2 m i sami nose lim, bez rožnjača.')
   } else {
-    pushCuts(lines, 'Konstrukcija', `Rogovi, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId)
+    pushCuts(lines, 'Konstrukcija', `Rogovi, ${profiles.rafter.name}`, lengthsOf(frame.rafters), profiles.rafter.priceId, plumb(frame.rafters))
     pushCuts(lines, 'Konstrukcija', `Rožnjače, ${profiles.purlin.name}`, lengthsOf(frame.purlins), profiles.purlin.priceId)
     notes.push('Rogovi su na najviše 1,2 m, rožnjače na najviše 0,9 m po kosini.')
   }
@@ -70,8 +84,10 @@ export function buildEstimate(scene) {
   }
   const wallBraces = frame.braces.filter((brace) => brace.kind === 'zid')
   const roofBraces = frame.braces.filter((brace) => brace.kind === 'krov')
-  if (wallBraces.length) pushCuts(lines, 'Konstrukcija', `Zidna ukrućenja (dijagonale), ${profiles.brace.name}`, lengthsOf(wallBraces), profiles.brace.priceId)
-  if (roofBraces.length) pushCuts(lines, 'Konstrukcija', `Krovni spregovi (dijagonale), ${profiles.brace.name}`, lengthsOf(roofBraces), profiles.brace.priceId)
+  // Zidna dijagonala naleže na stubove, krovna na nosače između kojih stoji.
+  const rafterOf = (brace) => frame.rafters.find((rafter) => Math.hypot(rafter.a[0] - brace.a[0], rafter.a[1] - brace.a[1], rafter.a[2] - brace.a[2]) < 0.01) ?? frame.rafters[0]
+  if (wallBraces.length) pushCuts(lines, 'Konstrukcija', `Zidna ukrućenja (dijagonale), ${profiles.brace.name}`, lengthsOf(wallBraces), profiles.brace.priceId, plumb(wallBraces))
+  if (roofBraces.length) pushCuts(lines, 'Konstrukcija', `Krovni spregovi (dijagonale), ${profiles.brace.name}`, lengthsOf(roofBraces), profiles.brace.priceId, against(roofBraces, rafterOf))
   notes.push('Dijagonale idu u krajnja polja svakog zida i u krajnja polja krova. One nose vetar; bez njih se skelet ljulja i oslanja samo na lim.')
   if (frame.unbraced.length) {
     const names = frame.unbraced.map((id) => wallFrame(id, dimensions).label.toLowerCase()).join(', ')
@@ -282,9 +298,10 @@ function pushWallCover(lines, notes, scene, geometry) {
   }
   const tallest = Math.max(areas.heightLeft, areas.heightRight, areas.heightBack, areas.heightFront)
   const sheetLength = roundCut(tallest)
-  const sheets = Math.max(1, Math.ceil((net * SHEET_WASTE) / (cover.width * sheetLength)))
+  // Broj tabli je iz rasporeda po zidovima, da se predmer i raspored slažu.
+  const sheets = wallSheets(scene)?.count ?? Math.max(1, Math.ceil((net * SHEET_WASTE) / (cover.width * sheetLength)))
   const trims = roundCut(tallest * 4 + (dimensions.width + dimensions.length) * 2)
-  lines.push(line('Zidovi', `${cover.name}${colorNote}`, sheets, 'tabla', `korisna širina ${fmt(cover.width)} m, dužina ${fmt(sheetLength)} m`))
+  lines.push(line('Zidovi', `${cover.name}${colorNote}`, sheets, 'tabla', `korisna širina ${fmt(cover.width)} m, najduža ${fmt(sheetLength)} m, dužine po rasporedu tabli`))
   lines.push(line('Zidovi', 'Zidna obloga, neto', round1(net), 'm²', 'otvori su odbijeni', { priceId: material.priceId }))
   lines.push(line('Zidovi', 'Ugaone lajsne i sokla', trims, 'm', 'uglovi i donja ivica zida', { priceId: 'flashing-m' }))
   return net
@@ -612,17 +629,44 @@ function pushVentilation(lines, notes, warnings, scene) {
   }
 }
 
-function pushCuts(lines, section, item, lengths, priceId) {
+// Nagib dela prema horizontali, u stepenima.
+function inclination(segment) {
+  const run = Math.hypot(segment.b[0] - segment.a[0], segment.b[2] - segment.a[2])
+  return (Math.atan2(Math.abs(segment.b[1] - segment.a[1]), run) * 180) / Math.PI
+}
+
+// Ugao između dva dela, od 0 do 90 stepeni.
+function angleBetween(segment, other) {
+  const v = [segment.b[0] - segment.a[0], segment.b[1] - segment.a[1], segment.b[2] - segment.a[2]]
+  const w = [other.b[0] - other.a[0], other.b[1] - other.a[1], other.b[2] - other.a[2]]
+  const dot = Math.abs(v[0] * w[0] + v[1] * w[1] + v[2] * w[2])
+  const size = Math.hypot(...v) * Math.hypot(...w) || 1
+  return (Math.acos(Math.min(1, dot / size)) * 180) / Math.PI
+}
+
+// Rez oštriji od 60° testera ne može da podesi, pa se obeležava i seče po meri.
+function endLabel(pair) {
+  const [first, second] = pair.map((value) => Math.round(value))
+  if (first === 0 && second === 0) return 'ravno'
+  if (first > 60 || second > 60) return 'po meri'
+  return first === second ? `${first}°` : `${first}° i ${second}°`
+}
+
+// `ends` je par uglova reza za svaki komad, istim redom kao `lengths`. Bez njega su rezovi ravni.
+function pushCuts(lines, section, item, lengths, priceId, ends) {
   const grouped = new Map()
-  lengths.forEach((length) => {
+  const labels = new Map()
+  lengths.forEach((length, index) => {
     const cut = roundCut(length)
     grouped.set(cut, (grouped.get(cut) ?? 0) + 1)
+    if (!labels.has(cut)) labels.set(cut, new Set())
+    labels.get(cut).add(ends?.[index] ? endLabel(ends[index]) : 'ravno')
   })
   const parts = [...grouped.entries()].sort((left, right) => right[0] - left[0])
   const count = parts.reduce((sum, [, pieces]) => sum + pieces, 0)
   const total = parts.reduce((sum, [cut, pieces]) => sum + cut * pieces, 0)
   const detail = parts.map(([cut, pieces]) => `${pieces} × ${fmt(cut)} m`).join(', ')
-  const cuts = parts.map(([length, pieces]) => ({ length, count: pieces }))
+  const cuts = parts.map(([length, pieces]) => ({ length, count: pieces, ends: [...labels.get(length)].join(' ili ') }))
   lines.push(line(section, item, count, 'kom', `${detail} · ukupno ${fmt(total)} m`, { priceId, meters: total, priceUnit: 'm', cuts }))
 }
 

@@ -3,7 +3,8 @@ import { ArrowLeft, Printer } from 'lucide-react'
 import { buildingType } from '../buildings'
 import { accessLabel } from '../billing/entitlements'
 import { useBilling } from '../billing/paymentService'
-import { AssemblySheet, CuttingSheet, PositionsSheet, ShoppingSheet, SlabSheet } from '../components/DiySheets'
+import { AssemblySheet, CuttingSheet, PanelSheet, PositionsSheet, ShoppingSheet, SlabSheet } from '../components/DiySheets'
+import { positionLookup } from '../cutting'
 import { ElevationSheet, PlanSheet, RoofPlanSheet, SectionSheet } from '../components/Drawings'
 import { LockedPreview } from '../components/LockedPreview'
 import { GarageView } from '../components/GarageView'
@@ -33,6 +34,8 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
   // Paket Pro: u zaglavlju i podnožju stoje podaci firme umesto oznake Mera.
   const brand = access.branding && company.name ? company : null
   const brandName = brand ? brand.name : 'Mera'
+  // Brojevi pozicija na crtežima vode na spisak profila.
+  const marks = useMemo(() => positionLookup(estimate), [estimate])
   const [shots, setShots] = useState({})
   const [customer, setCustomer] = useState('')
   const [place, setPlace] = useState('')
@@ -227,22 +230,23 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
       <Page brand={brandName} number={3} code={number} title="Osnova i krovna konstrukcija">
         <PlanSheet scene={scene} />
         <div className="mt-4">
-          <RoofPlanSheet scene={scene} />
+          <RoofPlanSheet scene={scene} marks={marks} />
         </div>
+        <p className="mt-2 text-[10px] text-stone-500">Broj u krugu je pozicija sa spiska profila. Stubovi, pojasevi i zidne dijagonale označeni su na izgledima.</p>
       </Page>
 
       {/* 4. Izgledi */}
       <Page brand={brandName} number={4} code={number} title="Izgledi">
         <div className="space-y-3">
           {['front', 'back', 'left', 'right'].map((id) => (
-            <ElevationSheet key={id} scene={scene} wall={id} />
+            <ElevationSheet key={id} scene={scene} wall={id} marks={marks} />
           ))}
         </div>
       </Page>
 
       {/* 5. Presek i provera nosača */}
       <Page brand={brandName} number={5} code={number} title="Presek i provera krovnog nosača">
-        <SectionSheet scene={scene} />
+        <SectionSheet scene={scene} marks={marks} />
         <table className="mt-5 w-full text-sm">
           <tbody>
             {check.map(([label, value, comment]) => (
@@ -317,13 +321,17 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
         <CuttingSheet estimate={estimate} />
       </Page>
 
-      <Page brand={brandName} number={9} code={number} title="Betonska ploča, montaža i alat">
+      <Page brand={brandName} number={9} code={number} title="Raspored tabli lima i panela">
+        <PanelSheet scene={scene} />
+      </Page>
+
+      <Page brand={brandName} number={10} code={number} title="Betonska ploča, montaža i alat">
         <SlabSheet scene={scene} estimate={estimate} />
         <h3 className="mt-5 mb-2 border-b border-stone-300 pb-1 text-sm font-semibold text-stone-950">Redosled montaže</h3>
         <AssemblySheet scene={scene} estimate={estimate} />
       </Page>
 
-      <Page brand={brandName} number={10} code={number} title="Lista za nabavku">
+      <Page brand={brandName} number={11} code={number} title="Lista za nabavku">
         <ShoppingSheet estimate={estimate} />
       </Page>
         </>
@@ -331,8 +339,8 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
         <section className="no-print mx-auto my-6 w-[210mm] max-w-full bg-white p-[14mm] shadow-xl">
           <h2 className="mb-1 text-2xl leading-tight font-bold text-stone-950">Crteži, spisak profila i raspored rezanja</h2>
           <p className="mb-4 max-w-xl text-sm leading-relaxed text-stone-600">
-            Ove dve strane su besplatan sažetak. Paket dodaje osam strana: crteže sa kotama, predmer po stavkama, spisak profila po
-            pozicijama, raspored rezanja po šipkama od 6 m, betonsku ploču, redosled montaže i listu za nabavku.
+            Ove dve strane su besplatan sažetak. Paket dodaje devet strana: crteže sa kotama i pozicijama, predmer po stavkama, spisak profila
+            sa uglovima rezanja, raspored rezanja po šipkama od 6 m, raspored tabli lima, betonsku ploču, redosled montaže i listu za nabavku.
           </p>
           <div className="max-w-md">
             <LockedPreview title="Dokumentacija za izradu je zaključana" text="Otključava se za ovaj projekat i može da se štampa koliko god puta treba dok paket važi." billing={billing} />
@@ -341,7 +349,7 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
       )}
 
       {/* Napomene */}
-      <Page brand={brandName} number={full ? 11 : 3} code={number} title="Upozorenja i napomene">
+      <Page brand={brandName} number={full ? 12 : 3} code={number} title="Upozorenja i napomene">
         {estimate.warnings.length > 0 && (
           <ul className="space-y-1.5">
             {estimate.warnings.map((warning) => (

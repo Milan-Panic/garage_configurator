@@ -10,9 +10,10 @@ import { formatDin } from '../prices'
 const FREE_ITEMS = ['3D konfigurator bez ograničenja', 'Orijentaciona cena dok menjaš objekat', 'Zbir po poslovima', 'Upiti majstorima i firmama, bez naknade', 'Čuvanje projekata u pregledaču']
 
 const DIY_ITEMS = [
-  'Crteži sa kotama: osnova, krov, sve fasade i presek',
-  'Spisak profila po pozicijama, sa dužinama',
+  'Crteži sa kotama i brojevima pozicija: osnova, krov, sve fasade i presek',
+  'Spisak profila po pozicijama, sa dužinama i uglovima rezanja',
   'Raspored rezanja po šipkama od 6 m, sa otpadom',
+  'Raspored tabli lima i panela po zidovima i krovu, sa otpadom',
   'Table, opšivke, oluk, okov, samorezi i ankeri',
   'Betonska ploča: mere, beton i armatura',
   'Redosled montaže i spisak alata',

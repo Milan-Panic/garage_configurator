@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { assemblySteps, shoppingList, slabSpec, toolList } from '../assembly'
 import { BAR_LENGTH, cutPositions, cuttingPlan } from '../cutting'
+import { roofSheets, wallSheets } from '../sheets'
 
 // Listovi dokumentacije iz paketa „Uradi sam”: sadržaj za strane ponude.
 
@@ -23,6 +24,7 @@ export function PositionsSheet({ estimate }) {
             <th className="py-1.5 font-medium">Profil</th>
             <th className="py-1.5 text-right font-medium">Dužina</th>
             <th className="py-1.5 text-right font-medium">Komada</th>
+            <th className="py-1.5 pl-3 font-medium">Rez krajeva</th>
           </tr>
         </thead>
         <tbody>
@@ -33,13 +35,16 @@ export function PositionsSheet({ estimate }) {
               <td className="py-1 text-stone-600">{position.profile}</td>
               <td className="py-1 text-right tabular-nums">{m(position.length)} m</td>
               <td className="py-1 text-right tabular-nums">{position.count}</td>
+              <td className="py-1 pl-3 tabular-nums">{position.ends}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <p className="mt-2 text-[10px] leading-relaxed text-stone-500">
-        Dužine su zaokružene naviše na 5 cm i mere se po osi profila. Kose delove (dijagonale, rogovi) iskroji po meri na licu mesta: ugao reza
-        nije u ovom spisku.
+        Dužine su zaokružene naviše na 5 cm i mere se po osi profila. Rez krajeva je otklon od ravnog reza, kako se podešava na testeri:
+        „ravno” je rez pod pravim uglom na osu, a dva broja znače različite rezove na dva kraja. Uz deo koji leži skoro uz susedni piše da se seče po meri. Ugao je izračunat iz geometrije skeleta i
+        pretpostavlja da deo naleže čelom na susedni; kod ispune rešetke na dve vode važi za donji kraj. Prvi komad svake pozicije probaj na
+        mestu pre nego što isečeš ostale. Broj pozicije je isti kao u krugovima na crtežima.
       </p>
     </>
   )
@@ -187,5 +192,138 @@ export function ShoppingSheet({ estimate }) {
         </tbody>
       ))}
     </table>
+  )
+}
+
+// Srpska množina: 1 tabla, 2 table, 5 tabli.
+function plural(count, [one, few, many]) {
+  const last = count % 10
+  const teen = count % 100 >= 11 && count % 100 <= 14
+  if (last === 1 && !teen) return one
+  return last >= 2 && last <= 4 && !teen ? few : many
+}
+
+const WALL_NAMES = { front: 'Zid spreda', back: 'Zid otpozadi', left: 'Zid sleva', right: 'Zid zdesna' }
+
+function OrderTable({ title, layout }) {
+  return (
+    <div className="avoid-break">
+      <p className="border-b border-stone-900 pb-1 text-xs font-semibold text-stone-950">
+        {title}: {layout.name}
+      </p>
+      <table className="mt-1 w-full text-[11px] tabular-nums">
+        <tbody>
+          {layout.order.map((row) => (
+            <tr key={row.length} className="border-b border-stone-200">
+              <td className="py-0.5">dužina {m(row.length)} m</td>
+              <td className="py-0.5 text-right">
+                {row.count} {plural(row.count, layout.unit === 'traka' ? ['traka', 'trake', 'traka'] : ['tabla', 'table', 'tabli'])}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-1 text-[10px] text-stone-600 tabular-nums">
+        Ukupno {layout.count}, korisna širina {m(layout.width)} m. Poručeno {m(layout.ordered, 1)} m², pokriva {m(layout.net, 1)} m², otpad{' '}
+        {m(layout.waste, 1)} m² ({layout.wastePct}%).
+      </p>
+    </div>
+  )
+}
+
+// Zid gledan spolja: table su numerisane sleva, žuto je poručena tabla, a debela linija ivica zida.
+function WallLayout({ wall, width }) {
+  const scale = 26
+  const pad = 30
+  const top = Math.max(...wall.strips.map((strip) => strip.top))
+  const w = wall.span * scale + pad * 2
+  const h = top * scale + pad + 14
+  const base = top * scale + pad
+  const X = (u) => pad + (wall.span / 2 - u) * scale
+  const Y = (up) => base - up * scale
+  const outline = Array.from({ length: 25 }, (_, index) => -wall.span / 2 + (wall.span * index) / 24).map((u) => `${X(u).toFixed(1)},${Y(wall.heightAt(u)).toFixed(1)}`)
+  return (
+    <figure className="avoid-break">
+      <svg viewBox={`0 0 ${w} ${h}`} className="h-auto w-full" role="img" aria-label={`${WALL_NAMES[wall.id]}, raspored tabli`}>
+        {wall.strips.map((strip, index) => (
+          <g key={index}>
+            {strip.pieces.map(([low], piece) => (
+              <rect
+                key={piece}
+                x={X(strip.u0 + width)}
+                y={Y(low + strip.cuts[piece])}
+                width={width * scale}
+                height={strip.cuts[piece] * scale}
+                fill="#fdf1c7"
+                stroke="#6d767f"
+                strokeWidth="0.5"
+              />
+            ))}
+            <text x={X((strip.u0 + strip.u1) / 2)} y={base + 9} textAnchor="middle" fontSize="6.5" fill="#1f252a">
+              {wall.strips.length - index}
+            </text>
+          </g>
+        ))}
+        {wall.openings.map((opening, index) => (
+          <rect
+            key={index}
+            x={X(opening.along + opening.width / 2)}
+            y={Y(opening.sill + opening.height)}
+            width={opening.width * scale}
+            height={opening.height * scale}
+            fill="#ffffff"
+            stroke="#1f252a"
+            strokeWidth="0.8"
+            strokeDasharray="3 2"
+          />
+        ))}
+        <polygon points={`${X(wall.span / 2)},${base} ${outline.reverse().join(' ')} ${X(-wall.span / 2)},${base}`} fill="none" stroke="#1f252a" strokeWidth="1.2" />
+      </svg>
+      <figcaption className="text-[10px] text-stone-600 tabular-nums">
+        {WALL_NAMES[wall.id]}, {m(wall.span)} m: {wall.strips.length} u nizu, {wall.count} komada
+      </figcaption>
+    </figure>
+  )
+}
+
+export function PanelSheet({ scene }) {
+  const walls = useMemo(() => wallSheets(scene), [scene])
+  const roof = useMemo(() => roofSheets(scene), [scene])
+  const units = scene.units || 1
+  return (
+    <div className="space-y-4">
+      {walls ? (
+        <>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+            {walls.parts.map((wall) => (
+              <WallLayout key={wall.id} wall={wall} width={walls.width} />
+            ))}
+          </div>
+          <OrderTable title="Zidovi" layout={walls} />
+        </>
+      ) : (
+        <p className="text-xs text-stone-600">Zidna obloga nije u tablama, već u letvicama ili pločama, pa se poručuje po površini iz predmera.</p>
+      )}
+      {roof ? (
+        <>
+          <OrderTable title="Krov" layout={roof} />
+          <ul className="text-[10px] text-stone-600 tabular-nums">
+            {roof.parts.map((slope) => (
+              <li key={slope.label}>
+                {slope.label}: {slope.across} u nizu duž strehe od {m(slope.alongCover)} m{slope.rows > 1 ? `, u ${slope.rows} reda sa preklopom 20 cm` : ''}, dužina {m(slope.length)} m
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="text-xs text-stone-600">Krov je pod membranom, koja se poručuje po površini iz predmera.</p>
+      )}
+      <p className="text-[10px] leading-relaxed text-stone-500">
+        Table se poručuju sečene na dužinu, pa je otpad ono što se odseče na mestu: otvori, kosina uz krov i višak širine poslednje table. Žuto
+        polje je poručena tabla, isprekidano je otvor. Tabla koja cela pada u otvor poručuje se samo kao komad iznad ili ispod njega. Preklop
+        po širini je već u korisnoj širini table.{units > 1 ? ` Raspored važi za jednu od ${units} jedinica u nizu; zid između jedinica oblaže se jednom.` : ''} Pre
+        poručivanja premeri izveden skelet.
+      </p>
+    </div>
   )
 }

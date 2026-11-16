@@ -13,10 +13,23 @@ export function cutPositions(estimate) {
     const part = split > 0 ? line.item.slice(0, split) : line.item
     const profile = split > 0 ? line.item.slice(split + 2) : 'profil'
     line.cuts.forEach((cut) => {
-      positions.push({ mark: positions.length + 1, part, profile, length: cut.length, count: cut.count })
+      positions.push({ mark: positions.length + 1, part, profile, length: cut.length, count: cut.count, ends: cut.ends || 'ravno' })
     })
   })
   return positions
+}
+
+// Za crteže: broj pozicije za deo konstrukcije zadate dužine.
+// `parts` su počeci naziva dela iz računice, npr. 'Stubovi' ili 'Rožnjače'.
+export function positionLookup(estimate) {
+  const positions = cutPositions(estimate)
+  return (parts, length) => {
+    const names = Array.isArray(parts) ? parts : [parts]
+    const group = positions.filter((position) => names.some((name) => position.part.startsWith(name)))
+    if (group.length === 0) return null
+    const cut = Math.ceil(length * 20 - 1e-9) / 20
+    return group.reduce((best, position) => (Math.abs(position.length - cut) < Math.abs(best.length - cut) ? position : best)).mark
+  }
 }
 
 /*
