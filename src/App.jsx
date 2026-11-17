@@ -12,12 +12,15 @@ import { PartnerPage } from './pages/PartnerPage'
 import { PermitsPage } from './pages/PermitsPage'
 import { OfferPage } from './pages/OfferPage'
 import { PlansPage } from './pages/PlansPage'
+import { AccountPage, ResetPasswordPage } from './pages/AccountPage'
 import { CheckoutHost } from './components/CheckoutModal'
+import { AccountHost } from './components/AccountModal'
 import { openCheckout } from './billing/checkout'
 import { projectAccess } from './billing/entitlements'
-import { diyOrder, unlockProject, useBilling } from './billing/paymentService'
+import { diyOrder, loadBilling, unlockProject, useBilling } from './billing/paymentService'
 import { diyPrice, footprintArea } from './billing/plans'
-import { adoptVisitorKey } from './visitor'
+import { loadAccount, readAccount, requireAccount, useAccount } from './account'
+import { readDraft, writeDraft } from './draft'
 import { clampDimension } from './config'
 import { settleCar, settleFurniture } from './collide'
 import { DOOR_MATERIALS, doorMaterialsFor, sceneMaterials } from './materials'
@@ -39,6 +42,7 @@ import {
 } from './layout'
 import {
   createProjectId,
+  emptyLibrary,
   isSceneDirty,
   loadLibrary,
   persistLibrary,
@@ -77,19 +81,38 @@ export default function App() {
   const [boot, setBoot] = useState(null)
   const [bootError, setBootError] = useState('')
 
+  // Trenutni crtež dolazi iz pregledača (radi i bez naloga), a sačuvani projekti sa naloga.
   useEffect(() => {
     let cancelled = false
-    loadLibrary()
-      .then(({ library, directory }) => {
-        if (cancelled) return
-        const active = library.projects.find((project) => project.id === library.activeId) ?? null
-        const scene = active ? active.scene : initialScene
-        adoptIds(scene)
-        setBoot({ library, scene, name: active?.name ?? '', directory })
-      })
-      .catch(() => {
-        if (!cancelled) setBootError('Projekti se ne mogu učitati sa servera.')
-      })
+    async function start() {
+      const account = await loadAccount()
+      await loadBilling(Boolean(account.user))
+      const library = account.user ? await loadLibrary() : emptyLibrary()
+      const draft = readDraft()
+      let scene = initialScene
+      let name = ''
+      let activeId = null
+      if (draft) {
+        const restored = normalizeScene(draft.scene)
+        // Netaknut početni objekat ostaje „nov”, a ne „nesačuvan”.
+        scene = scenesEqual(restored, normalizeScene(initialScene)) ? initialScene : restored
+        name = draft.name
+        activeId = library.projects.some((project) => project.id === draft.projectId) ? draft.projectId : null
+      } else {
+        const active = library.projects.find((project) => project.id === library.activeId)
+        if (active) {
+          scene = active.scene
+          name = active.name
+          activeId = active.id
+        }
+      }
+      if (cancelled) return
+      adoptIds(scene)
+      setBoot({ library: { ...library, activeId }, scene, name, owner: account.user?.id ?? null })
+    }
+    start().catch(() => {
+      if (!cancelled) setBootError('Projekti se ne mogu učitati sa servera.')
+    })
     return () => {
       cancelled = true
     }
@@ -122,35 +145,9 @@ function Shell({ children }) {
       <SiteHeader />
       <div className="min-h-0 flex-1">{children}</div>
       <CheckoutHost />
+      <AccountHost />
     </div>
   )
-}
-
-function ResumePage({ token }) {
-  const [message, setMessage] = useState('Vraćam sačuvane projekte…')
-
-  useEffect(() => {
-    let stop = false
-    fetch('/api/visitor/resume', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    })
-      .then(async (response) => {
-        const payload = await response.json()
-        if (!response.ok) throw new Error(payload.error || 'Link nije važeći.')
-        adoptVisitorKey(payload.visitorKey)
-        window.location.replace('/')
-      })
-      .catch((error) => {
-        if (!stop) setMessage(error.message || 'Link nije važeći.')
-      })
-    return () => {
-      stop = true
-    }
-  }, [token])
-
-  return <div className="flex h-full items-center justify-center px-6 text-center text-stone-700">{message}</div>
 }
 
 function StatusScreen({ message }) {
@@ -199,7 +196,11 @@ function Configurator({ boot }) {
   const quote = useMemo(() => orientationQuote(fullScene, estimate, catalog), [fullScene, estimate, catalog])
   const total = quoteTotal(quote)
   const path = usePath()
-  const resumeMatch = /^\/nastavi\/([a-f0-9]{24,80})$/.exec(path)
+  const resetMatch = /^\/nalog\/nova-lozinka\/([a-f0-9]{48})$/.exec(path)
+  const account = useAccount()
+  const userId = account.user?.id ?? null
+  // Za koji nalog je biblioteka učitana; kad se promeni prijava, biblioteka se učitava ponovo.
+  const libraryOwner = useRef(boot.owner)
   const activeProject = library.projects.find((project) => project.id === library.activeId) ?? null
   const dirty = isSceneDirty(activeProject, projectName, scene)
   const saveMessage =
@@ -274,18 +275,72 @@ function Configurator({ boot }) {
     return () => clearTimeout(handle)
   }, [scene, projectName, library.activeId])
 
+  // Trenutni crtež se pamti u pregledaču posle svake izmene, sa nalogom ili bez njega.
+  useEffect(() => {
+    const handle = setTimeout(() => writeDraft({ scene, name: projectName, projectId: library.activeId }), 400)
+    return () => clearTimeout(handle)
+  }, [scene, projectName, library.activeId])
+
+  // Prijava ili odjava iz zaglavlja ili sa profila.
+  useEffect(() => {
+    if (libraryOwner.current === userId) return
+    if (userId) {
+      refreshLibrary(userId).catch(() => setSaveError('Projekti sa naloga se ne mogu učitati.'))
+      loadBilling(true)
+      return
+    }
+    libraryOwner.current = null
+    loadBilling(false)
+    // Posle odjave sačuvan projekat ne ostaje otvoren na ovom računaru.
+    const hadProject = Boolean(libraryRef.current.activeId)
+    libraryRef.current = emptyLibrary()
+    setLibrary(libraryRef.current)
+    if (hadProject) {
+      adoptIds(initialScene)
+      replace(initialScene)
+      setSelected(null)
+      setProjectName('')
+    }
+    setSaveNotice(null)
+    // refreshLibrary i replace su stabilni za ovaj nalog; efekat prati samo promenu prijave.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
+
+  async function refreshLibrary(owner) {
+    libraryOwner.current = owner
+    const loaded = await loadLibrary()
+    const current = libraryRef.current
+    const next = {
+      projects: loaded.projects,
+      activeId: loaded.projects.some((project) => project.id === current.activeId) ? current.activeId : null,
+    }
+    libraryRef.current = next
+    setLibrary(next)
+    return next
+  }
+
+  // Čuvanje, upit i kupovina traže nalog. Crtež ostaje isti dok se korisnik prijavljuje.
+  async function ensureAccount(reason) {
+    const user = readAccount().user ?? (await requireAccount(reason))
+    if (!user) return false
+    if (libraryOwner.current !== user.id) await refreshLibrary(user.id)
+    return true
+  }
+
   function storeLibrary(next) {
     const serial = ++saveSerial.current
     libraryRef.current = next
     setLibrary(next)
+    // Bez naloga nema biblioteke na serveru; trenutni crtež je već u pregledaču.
+    if (!libraryOwner.current) return Promise.resolve(false)
     return persistLibrary(next)
       .then(() => {
         if (serial !== saveSerial.current) return false
         setSaveError('')
         return true
       })
-      .catch(() => {
-        if (serial === saveSerial.current) setSaveError('Nije moguće sačuvati projekat. Proveri vezu sa serverom.')
+      .catch((error) => {
+        if (serial === saveSerial.current) setSaveError(error.status === 401 ? 'Prijava je istekla. Prijavi se ponovo da sačuvaš izmene.' : 'Nije moguće sačuvati projekat. Proveri vezu sa serverom.')
         return false
       })
   }
@@ -307,19 +362,20 @@ function Configurator({ boot }) {
     }
   }
 
-  function saveProject() {
+  // Vraća sačuvan zapis, ili null ako korisnik nije hteo da se prijavi ili čuvanje nije uspelo.
+  async function saveProject(reason = 'Projekti se čuvaju na nalogu. Prijavi se ili napravi nalog, a crtež ostaje kakav jeste.') {
+    if (!(await ensureAccount(reason))) return null
     const updating = Boolean(libraryRef.current.activeId)
     const snap = snapshotProject()
     setProjectName(snap.record.name)
-    storeLibrary(snap.library).then((saved) => {
-      if (!saved) return
-      setSaveNotice({
-        message: updating ? 'Izmene su sačuvane.' : 'Projekat je sačuvan.',
-        scene: snap.record.scene,
-        name: snap.record.name,
-      })
+    const saved = await storeLibrary(snap.library)
+    if (!saved) return null
+    setSaveNotice({
+      message: updating ? 'Izmene su sačuvane.' : 'Projekat je sačuvan na nalogu.',
+      scene: snap.record.scene,
+      name: snap.record.name,
     })
-    return snap
+    return snap.record
   }
 
   function openProject(id) {
@@ -540,9 +596,11 @@ function Configurator({ boot }) {
         : { ...current.door, ...defaultDoorSize(current.dimensions), wall: current.door?.wall ?? 'front' }
       const next = clampDoor({ ...base, ...patch }, current.dimensions)
       if (next.style !== 'single' && next.style !== 'double') next.wicket = false
+      const leafless = next.style === 'none' || next.style === 'opening'
+      if (leafless) next.motor = false
       let { doorMaterialId, doorColor } = current
       const spec = DOOR_MATERIALS.find((entry) => entry.id === doorMaterialId)
-      if (next.style !== 'none' && spec && !spec.styles.includes(next.style)) {
+      if (!leafless && spec && !spec.styles.includes(next.style)) {
         const options = doorMaterialsFor(next.style)
         const light = spec.color && parseInt(spec.color.slice(1, 3), 16) > 200
         const match = options.find((entry) => light === parseInt(entry.color.slice(1, 3), 16) > 200) ?? options[0]
@@ -651,15 +709,22 @@ function Configurator({ boot }) {
     setSelected((current) => (current?.id === target.id ? null : current))
   }
 
-  // Kupovina se vezuje za sačuvan projekat, pa se projekat prvo čuva.
-  function buyDiy() {
-    const { record } = saveProject()
+  // Kupovina se vezuje za sačuvan projekat na nalogu, pa se projekat prvo čuva.
+  async function buyDiy() {
+    const record = await saveProject('Paket se vezuje za projekat na tvom nalogu. Prijavi se ili napravi nalog da nastaviš.')
+    if (!record) return
     openCheckout(diyOrder({ projectId: record.id, projectName: record.name, dimensions: record.scene.dimensions, units: record.scene.units }))
   }
 
-  function unlockFromSubscription() {
-    const { record } = saveProject()
-    unlockProject(record.id)
+  async function unlockFromSubscription() {
+    const record = await saveProject()
+    if (!record) return
+    unlockProject(record.id).catch((error) => setSaveError(error.message))
+  }
+
+  function openFromAccount(id) {
+    openProject(id)
+    navigate('/konfigurator')
   }
 
   const billing = {
@@ -669,11 +734,20 @@ function Configurator({ boot }) {
     onUnlock: unlockFromSubscription,
   }
 
-  const pages = ['/konfigurator', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda', '/paketi']
+  const pages = ['/konfigurator', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda', '/paketi', '/nalog']
 
   return (
     <>
-      {path === '/majstori' && <CraftsmenPage scene={fullScene} projectName={projectNameOrDefault(projectName)} billing={billing} />}
+      {path === '/majstori' && (
+        <CraftsmenPage
+          scene={fullScene}
+          projectName={projectNameOrDefault(projectName)}
+          billing={billing}
+          onSaveProject={() => saveProject('Upit ide uz projekat sačuvan na tvom nalogu. Tamo pratiš i odgovor majstora. Prijavi se ili napravi nalog.')}
+        />
+      )}
+      {path === '/nalog' && <AccountPage projects={library.projects} activeProjectId={library.activeId} onOpenProject={openFromAccount} onDeleteProject={deleteProject} />}
+      {resetMatch && <ResetPasswordPage token={resetMatch[1]} />}
       {path === '/paketi' && <PlansPage scene={fullScene} projectName={projectNameOrDefault(projectName)} billing={billing} />}
       {path === '/dozvole' && <PermitsPage />}
       {path === '/ponuda' && <OfferPage scene={fullScene} projectName={projectNameOrDefault(projectName)} estimate={estimate} catalog={catalog} billing={billing} />}
@@ -681,8 +755,7 @@ function Configurator({ boot }) {
       {path === '/radionica' && <WorkshopPage />}
       {path === '/partner' && <PartnerPage />}
       {path === '/admin' && <AdminPage />}
-      {resumeMatch && <ResumePage token={resumeMatch[1]} />}
-      {!pages.includes(path) && !resumeMatch && <HomePage onStartFrom={startFrom} />}
+      {!pages.includes(path) && !resetMatch && <HomePage onStartFrom={startFrom} />}
       {path === '/konfigurator' && (
         <div className="flex h-full flex-col md:flex-row">
           <ControlPanel

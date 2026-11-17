@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { requireAccount } from '../account'
 
 // Koja porudžbina je trenutno otvorena u prozoru za plaćanje.
 let current = null
@@ -8,7 +9,10 @@ function emit() {
   listeners.forEach((listener) => listener())
 }
 
-export function openCheckout(order) {
+// Paket se vezuje za nalog, pa kupovina prvo traži prijavu.
+export async function openCheckout(order) {
+  const user = await requireAccount('Paket se vezuje za nalog. Prijavi se ili napravi nalog da nastaviš kupovinu.')
+  if (!user) return
   current = order
   emit()
 }

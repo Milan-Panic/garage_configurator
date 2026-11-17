@@ -7,7 +7,9 @@ import { BUILDING_TYPES, DEFAULT_CANOPY, DEFAULT_ELECTRIC, VENTILATION_OPTIONS, 
 import { DEFAULT_SITE, normalizeSite } from './site'
 import { DEFAULT_SKYLIGHTS, normalizeSkylights } from './skylights'
 
-const DOOR_STYLES = ['none', 'sectional', 'tilt', 'single', 'double', 'roller']
+const DOOR_STYLES = ['none', 'opening', 'sectional', 'tilt', 'single', 'double', 'roller']
+// Stilovi bez krila: nema materijala vrata, motora ni otvorenosti.
+const LEAFLESS = ['none', 'opening']
 
 const sizedDoor = defaultDoorSize(DEFAULT_DIMENSIONS)
 
@@ -103,13 +105,13 @@ export function normalizeScene(raw) {
       along: source.door?.along ?? 0,
       width: source.door?.width ?? fallback.width,
       height: source.door?.height ?? fallback.height,
-      motor: Boolean(source.door?.motor),
+      motor: Boolean(source.door?.motor) && !LEAFLESS.includes(style),
     },
     dimensions,
   )
   // Materijal vrata mora da odgovara tipu (npr. rolo lamele samo na rolo vratima).
   const doorSpec = DOOR_MATERIALS.find((entry) => entry.id === materials.doorMaterialId)
-  if (style !== 'none' && doorSpec && !doorSpec.styles.includes(style)) {
+  if (!LEAFLESS.includes(style) && doorSpec && !doorSpec.styles.includes(style)) {
     materials.doorMaterialId = DOOR_MATERIALS.find((entry) => entry.styles.includes(style))?.id ?? materials.doorMaterialId
   }
   const roof = normalizeRoof(source.roof)

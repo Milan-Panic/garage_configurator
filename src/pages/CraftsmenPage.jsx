@@ -6,7 +6,7 @@ import { buildEstimate } from '../estimate'
 import { sceneMaterials } from '../materials'
 import { applyOffers, packageOffers, useOfferPartners } from '../partners'
 import { formatDin, mergePrices, orientationQuote, packageName, quoteItems } from '../prices'
-import { visitorKey } from '../visitor'
+import { useAccount } from '../account'
 import { jobsFor, skillName } from './craftsmen'
 
 const SHOTS = [
@@ -15,23 +15,37 @@ const SHOTS = [
   { id: 'strana', label: 'Strana', theta: 1.55 },
 ]
 
-export function CraftsmenPage({ scene, projectName, billing }) {
+export function CraftsmenPage({ scene, projectName, billing, onSaveProject }) {
   const jobs = useMemo(() => jobsFor(scene), [scene])
   const estimate = useMemo(() => buildEstimate(scene), [scene])
   const [prices, setPrices] = useState(() => mergePrices(null))
   const [craftsmen, setCraftsmen] = useState([])
-  const [customerKey, setCustomerKey] = useState(() => visitorKey())
-  const [myInquiries, setMyInquiries] = useState([])
-  const [myLeads, setMyLeads] = useState([])
+  const account = useAccount()
+  const userId = account.user?.id ?? null
+  const [loadedInquiries, setMyInquiries] = useState([])
+  const [loadedLeads, setMyLeads] = useState([])
+  // Posle odjave tuđi upiti ne smeju da ostanu na ekranu.
+  const myInquiries = userId ? loadedInquiries : []
+  const myLeads = userId ? loadedLeads : []
   const partners = useOfferPartners()
   const [skipped, setSkipped] = useState({})
   const [included, setIncluded] = useState(() => Object.fromEntries(jobs.map((job) => [job.skill, job.send])))
   const [chosen, setChosen] = useState({})
   const [shots, setShots] = useState({})
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
+  // Podaci za upit dolaze sa profila; mogu se promeniti za ovaj upit.
+  const [firstName, setFirstName] = useState(() => splitName(account.user?.name)[0])
+  const [lastName, setLastName] = useState(() => splitName(account.user?.name)[1])
+  const [phone, setPhone] = useState(() => account.user?.phone || '')
+  const [email, setEmail] = useState(() => account.user?.email || '')
+  const [filledFor, setFilledFor] = useState(userId)
+  if (filledFor !== userId) {
+    setFilledFor(userId)
+    const [first, last] = splitName(account.user?.name)
+    setFirstName((current) => current || first)
+    setLastName((current) => current || last)
+    setPhone((current) => current || account.user?.phone || '')
+    setEmail((current) => current || account.user?.email || '')
+  }
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [sent, setSent] = useState([])
@@ -61,12 +75,12 @@ export function CraftsmenPage({ scene, projectName, billing }) {
   }, [])
 
   useEffect(() => {
-    if (!customerKey) return undefined
+    if (!userId) return undefined
     let stop = false
     async function load() {
-      const response = await fetch('/api/customer/inquiries', { headers: { 'X-Customer-Key': customerKey } })
+      const response = await fetch('/api/customer/inquiries')
       const payload = await response.json()
-      const leads = await fetch('/api/customer/leads', { headers: { 'X-Customer-Key': customerKey } }).then((result) => result.json())
+      const leads = await fetch('/api/customer/leads').then((result) => result.json())
       if (!stop) {
         setMyInquiries(payload.inquiries || [])
         setMyLeads(leads.leads || [])
@@ -78,7 +92,7 @@ export function CraftsmenPage({ scene, projectName, billing }) {
       stop = true
       clearInterval(timer)
     }
-  }, [customerKey])
+  }, [userId])
 
   useEffect(() => {
     setIncluded((current) => {
@@ -117,16 +131,22 @@ export function CraftsmenPage({ scene, projectName, billing }) {
       return
     }
     setPending(true)
+    // Upit ide uz projekat sačuvan na nalogu; bez prijave se ovde staje.
+    const record = await onSaveProject()
+    if (!record) {
+      setPending(false)
+      setError('Upit nije poslat. Za upit treba nalog, da bi odgovor majstora stigao na tvoj profil.')
+      return
+    }
     const views = SHOTS.map((shot) => shots[shot.id]).filter(Boolean)
     const saved = []
-    let key = customerKey
     try {
       for (const job of selected) {
         const response = await fetch('/api/inquiries', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            customerKey: key,
+            projectId: record.id,
             craftsmanId: chosen[job.skill],
             skill: job.skill,
             firstName,
@@ -145,7 +165,6 @@ export function CraftsmenPage({ scene, projectName, billing }) {
         })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload.error || 'Upit nije sačuvan.')
-        key = payload.customerKey || key
         const craftsman = craftsmen.find((entry) => entry.id === chosen[job.skill])
         saved.push(`${skillName(job.skill)} → ${craftsman?.shop ?? payload.id}`)
       }
@@ -154,7 +173,7 @@ export function CraftsmenPage({ scene, projectName, billing }) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            customerKey: key,
+            projectId: record.id,
             partnerId: entry.offer.partner.id,
             package: entry.pack.id,
             firstName,
@@ -168,12 +187,7 @@ export function CraftsmenPage({ scene, projectName, billing }) {
         })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload.error || 'Upit firmi nije sačuvan.')
-        key = payload.customerKey || key
         saved.push(`${entry.pack.name} → ${entry.offer.partner.name} (kod ${payload.code})`)
-      }
-      if (key) {
-        localStorage.setItem('mera-customer-key', key)
-        setCustomerKey(key)
       }
       setSent(saved)
       setNote('')
@@ -316,7 +330,11 @@ export function CraftsmenPage({ scene, projectName, billing }) {
               </label>
             </fieldset>
           ))}
-          <p className="text-sm text-stone-600">Nalog nije potreban. Ovi podaci idu uz upit.</p>
+          <p className="text-sm text-stone-600">
+            {account.user
+              ? 'Podaci su sa tvog profila i idu uz upit. Projekat se čuva na nalogu, a odgovor majstora vidiš i na profilu.'
+              : 'Za upit treba nalog: projekat se čuva na njemu, a tamo stiže i odgovor majstora. Prijava se traži kad pošalješ upit.'}
+          </p>
           <Field label="Ime" value={firstName} onChange={setFirstName} />
           <Field label="Prezime" value={lastName} onChange={setLastName} />
           <Field label="Imejl" value={email} onChange={setEmail} />
@@ -353,7 +371,6 @@ export function CraftsmenPage({ scene, projectName, billing }) {
           onWithdraw={async (id) => {
             const response = await fetch(`/api/customer/inquiries/${id}/withdraw`, {
               method: 'POST',
-              headers: { 'X-Customer-Key': customerKey },
             })
             const payload = await response.json()
             if (!response.ok) throw new Error(payload.error || 'Upit nije povučen.')
@@ -428,6 +445,11 @@ function statusLabel(status) {
   if (status === 'declined') return 'Majstor je odbio ovaj upit.'
   if (status === 'paid') return 'Kontakt je otvoren.'
   return 'Čeka odgovor majstora.'
+}
+
+function splitName(name) {
+  const parts = String(name || '').trim().split(' ').filter(Boolean)
+  return [parts[0] || '', parts.slice(1).join(' ')]
 }
 
 function Field({ label, value, onChange }) {

@@ -3,7 +3,6 @@ import { DEFAULT_PRICES, PACKAGES } from '../src/prices.js'
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
-const VISITOR_KEY = /^[a-f0-9]{24,80}$/
 const PACKAGE_IDS = PACKAGES.map((entry) => entry.id)
 const ARTICLES = new Map(DEFAULT_PRICES.map((item) => [item.id, item]))
 const CONTACT_STATUSES = ['approved', 'sold']
@@ -368,15 +367,16 @@ export function createLead(input) {
     items.push({ name: clean(item.name, 120) || article.name, quantity: Math.round(quantity * 100) / 100, unit: article.unit, unitPrice, total: lineTotal })
   })
   if (items.length === 0 || covered === 0) return { error: 'Ova firma nema cene za stavke iz objekta.' }
-  let customerKey = clean(input.customerKey, 80)
-  if (!VISITOR_KEY.test(customerKey)) customerKey = randomBytes(18).toString('hex')
+  // Ključ kupca je id naloga; postavlja ga server iz sesije.
+  const customerKey = clean(input.customerKey, 80)
+  if (!customerKey) return { error: 'Za upit je potrebna prijava.' }
   const id = `ponuda-${Date.now().toString(36)}${randomBytes(2).toString('hex')}`
   const code = `MERA-${randomBytes(3).toString('hex').toUpperCase()}`
   database.prepare(`
     INSERT INTO partner_leads (
-      id, code, created_at, partner_id, package, customer_key, project_name, customer_name, first_name,
+      id, code, created_at, partner_id, package, customer_key, project_id, project_name, customer_name, first_name,
       customer_phone, customer_email, note, offer_total, covered, articles, items_json, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
   `).run(
     id,
     code,
@@ -384,6 +384,7 @@ export function createLead(input) {
     partner.id,
     pack,
     customerKey,
+    clean(input.projectId, 90) || null,
     clean(input.projectName, 80),
     `${firstName} ${lastName}`,
     firstName,
@@ -415,6 +416,7 @@ function presentLead(row, role) {
     createdAt: row.created_at,
     package: row.package,
     status: row.status,
+    projectId: row.project_id || null,
     projectName: row.project_name,
     offerTotal: row.offer_total,
     covered: row.covered,

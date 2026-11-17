@@ -707,7 +707,7 @@ export function ElevationSheet({ scene, wall: wallId, marks: positions = null })
         const swing = door.style === 'single' || door.style === 'double' || door.style === 'tilt'
         return (
           <g key={index}>
-            <rect x={x} y={y} width={w} height={h} fill="#f0efed" stroke={INK} strokeWidth="1.4" />
+            <rect x={x} y={y} width={w} height={h} fill={door.style === 'opening' ? 'none' : '#f0efed'} stroke={INK} strokeWidth="1.4" />
             {Array.from({ length: Math.max(0, bands - 1) }, (_, band) => (
               <line key={band} x1={x} y1={y + (h * (band + 1)) / bands} x2={x + w} y2={y + (h * (band + 1)) / bands} stroke={SOFT} strokeWidth="0.6" />
             ))}

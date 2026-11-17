@@ -458,8 +458,9 @@ function dripLengths(dimensions, metrics) {
 }
 
 function pushDoor(lines, notes, warnings, dimensions, door) {
-  if (door.style === 'none') {
-    lines.push(line('Vrata', 'Otvor bez krila', 1, 'kom', 'štok ostaje u stubovima'))
+  if (door.style === 'none') return
+  if (door.style === 'opening') {
+    lines.push(line('Vrata', 'Otvor bez krila', 1, 'kom', `${fmt(door.width)} × ${fmt(door.height)} m, nadvratnik je u konstrukciji`))
     return
   }
   const wallName = wallFrame(door.wall || 'front', dimensions).label.toLowerCase()

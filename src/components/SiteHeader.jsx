@@ -1,3 +1,5 @@
+import { CircleUser } from 'lucide-react'
+import { openAccountPrompt, useAccount } from '../account'
 import { navigate, ROUTES, usePath } from '../nav'
 
 export function SiteHeader() {
@@ -43,7 +45,27 @@ export function SiteHeader() {
           Složi objekat
         </button>
       )}
+      <AccountLink active={path === '/nalog'} />
     </header>
+  )
+}
+
+// Prijavljen korisnik ide na profil; gost dobija prozor za prijavu.
+function AccountLink({ active }) {
+  const account = useAccount()
+  if (account.status === 'loading') return <span className="w-9 shrink-0" />
+  const user = account.user
+  return (
+    <button
+      type="button"
+      onClick={() => (user ? navigate('/nalog') : openAccountPrompt())}
+      aria-current={active ? 'page' : undefined}
+      className={`my-2.5 flex shrink-0 items-center gap-2 rounded-lg px-2.5 text-sm font-medium transition-colors ${active ? 'bg-white/15 text-white' : 'text-stone-200 hover:bg-white/10 hover:text-white'}`}
+    >
+      <CircleUser size={18} aria-hidden="true" />
+      <span className="hidden max-w-[10rem] truncate md:inline">{user ? user.name.split(' ')[0] : 'Prijava'}</span>
+      <span className="sr-only md:hidden">{user ? 'Moj nalog' : 'Prijava'}</span>
+    </button>
   )
 }
 
