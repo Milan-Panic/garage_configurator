@@ -5,6 +5,7 @@ const steel = { color: '#2a2f33', roughness: 0.4, metalness: 0.6 }
 
 export function GarageDoor({ door, material, wallHeight = door.height + 0.3 }) {
   if (door.style === 'none') return null
+  if (door.style === 'opening') return <DoorFrame door={door} />
   if (door.style === 'roller') return <RollerDoor door={door} material={material} />
   if (door.style === 'sectional') {
     return (

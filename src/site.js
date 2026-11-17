@@ -22,9 +22,9 @@ export const PLACES = [
   { id: 'kopaonik', name: 'Kopaonik', altitude: 1700 },
 ]
 
+// Računica razlikuje samo uobičajenu i izloženu lokaciju; ranije „zaklonjeno” čita se kao uobičajeno.
 export const WIND_OPTIONS = [
-  { id: 'sheltered', name: 'Zaklonjeno', detail: 'Među kućama i drvećem', pressure: 0.4 },
-  { id: 'open', name: 'Otvoreno', detail: 'Ravnica, ivica naselja', pressure: 0.6 },
+  { id: 'open', name: 'Uobičajeno', detail: 'Naselje, ravnica, ivica sela', pressure: 0.6 },
   { id: 'exposed', name: 'Izloženo', detail: 'Brdo, greben, košavsko područje', pressure: 0.9 },
 ]
 
@@ -52,7 +52,7 @@ export function snowLoad(site) {
 }
 
 export function windPressure(site) {
-  return (WIND_OPTIONS.find((entry) => entry.id === site?.wind) ?? WIND_OPTIONS[1]).pressure
+  return (WIND_OPTIONS.find((entry) => entry.id === site?.wind) ?? WIND_OPTIONS[0]).pressure
 }
 
 export function placeName(site) {

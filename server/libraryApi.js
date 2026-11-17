@@ -20,17 +20,14 @@ import {
   listCraftsmanTerms,
   paidFees,
   publicUrl,
-  readVisitorLibrary,
   recentMail,
   registerCraftsman,
   rejectInquiry,
   respondInquiry,
   setCraftsmanCommission,
-  resumeVisitor,
   skillLabel,
   withdrawInquiry,
   workshopInquiries,
-  writeVisitorLibrary,
 } from './platformDb.js'
 import {
   adminCreatePartner,
@@ -51,8 +48,31 @@ import {
   savePartnerPrices,
 } from './partnerDb.js'
 import { PACKAGES } from '../src/prices.js'
+import {
+  changePassword,
+  createReset,
+  deleteUser,
+  endOtherSessions,
+  endSession,
+  googleUser,
+  loginUser,
+  ownsProject,
+  payOrder,
+  readBilling,
+  readLibrary,
+  registerUser,
+  resetPassword,
+  saveCompany,
+  testBilling,
+  unlockProject,
+  updateProfile,
+  userFromToken,
+  writeLibrary,
+} from './accountDb.js'
 
 const MAX_BODY = 12_000_000
+const SESSION_COOKIE = 'mera_session'
+const SESSION_DAYS = 60
 let remindersStarted = false
 
 export function libraryApi() {
@@ -92,16 +112,20 @@ function createMiddleware(root) {
       return
     }
     if (url === '/api/partner-leads' && req.method === 'POST') {
+      const user = currentUser(req)
+      if (!user) return sendJson(res, 401, { error: 'Za upit firmi prijavi se na nalog.' })
       handleJson(req, res, async (raw) => {
-        const result = createLead(raw)
+        const projectId = ownsProject(user.id, raw.projectId) ? raw.projectId : null
+        const result = createLead({ ...raw, customerKey: user.id, projectId })
         if (result.error) return sendJson(res, 400, result)
         await notifyNewLead(result.lead).catch((error) => console.error(error))
-        sendJson(res, 200, { id: result.id, code: result.code, customerKey: result.customerKey })
+        sendJson(res, 200, { id: result.id, code: result.code })
       })
       return
     }
     if (url === '/api/customer/leads' && req.method === 'GET') {
-      sendJson(res, 200, { leads: customerLeads(req.headers['x-customer-key']) })
+      const user = currentUser(req)
+      sendJson(res, 200, { leads: user ? customerLeads(user.id) : [] })
       return
     }
     if (url === '/api/partner/register' && req.method === 'POST') {
@@ -240,21 +264,20 @@ function createMiddleware(root) {
       })
       return
     }
-    if (url === '/api/visitor/resume' && req.method === 'POST') {
-      handleJson(req, res, (raw) => {
-        const visitorKey = resumeVisitor(raw.token)
-        if (!visitorKey) return sendJson(res, 404, { error: 'Link više ne važi.' })
-        sendJson(res, 200, { visitorKey })
-      })
+    if (url?.startsWith('/api/account/') || url?.startsWith('/api/billing/')) {
+      handleAccount(url, req, res)
       return
     }
     if (url === '/api/customer/inquiries' && req.method === 'GET') {
-      sendJson(res, 200, { inquiries: customerInquiries(req.headers['x-customer-key']) })
+      const user = currentUser(req)
+      sendJson(res, 200, { inquiries: user ? customerInquiries(user.id) : [] })
       return
     }
     if (url?.startsWith('/api/customer/inquiries/') && url.endsWith('/withdraw') && req.method === 'POST') {
+      const user = currentUser(req)
+      if (!user) return sendJson(res, 401, { error: 'Prijava je istekla.' })
       const id = decodeURIComponent(url.slice('/api/customer/inquiries/'.length, -'/withdraw'.length))
-      const result = withdrawInquiry(req.headers['x-customer-key'], id)
+      const result = withdrawInquiry(user.id, id)
       if (result.error) return sendJson(res, 400, result)
       sendJson(res, 200, result)
       return
@@ -311,11 +334,10 @@ async function runReminders() {
 }
 
 async function handleLibrary(req, res) {
-  const visitorKey = req.headers['x-visitor-key']
+  const user = currentUser(req)
+  if (!user) return sendJson(res, 401, { error: 'Za čuvanje projekata prijavi se na nalog.' })
   if (req.method === 'GET') {
-    const library = readVisitorLibrary(visitorKey)
-    if (library.error) return sendJson(res, 400, library)
-    sendJson(res, 200, { ...library, directory: 'Sačuvano samo za ovaj pregledač.' })
+    sendJson(res, 200, readLibrary(user.id))
     return
   }
   if (req.method !== 'PUT') {
@@ -327,9 +349,7 @@ async function handleLibrary(req, res) {
     sendJson(res, 400, { error: 'Telo zahteva nije ispravan JSON.' })
     return
   }
-  const library = writeVisitorLibrary(visitorKey, raw)
-  if (library.error) return sendJson(res, 400, library)
-  sendJson(res, 200, { ...library, directory: 'Sačuvano samo za ovaj pregledač.' })
+  sendJson(res, 200, writeLibrary(user.id, raw))
 }
 
 function serveView(root, url, res) {
@@ -376,6 +396,11 @@ async function handleInquiry(root, req, res) {
     sendJson(res, 405, { error: 'Metoda nije podržana.' })
     return
   }
+  const user = currentUser(req)
+  if (!user) {
+    sendJson(res, 401, { error: 'Za upit majstoru prijavi se na nalog.' })
+    return
+  }
   const raw = parseJson(await readBody(req))
   if (!raw) {
     sendJson(res, 400, { error: 'Telo zahteva nije ispravan JSON.' })
@@ -393,17 +418,18 @@ async function handleInquiry(root, req, res) {
     await fs.writeFile(path.join(directory, fileName), Buffer.from(match[1], 'base64'))
     views.push(fileName)
   }
-  const result = createInquiry({ ...raw, views })
+  const projectId = ownsProject(user.id, raw.projectId) ? raw.projectId : null
+  const result = createInquiry({ ...raw, views, customerKey: user.id, projectId })
   if (result.error) {
     sendJson(res, 400, result)
     return
   }
   const inquiry = getInquiry(result.id)
-  await notifyNewInquiry(inquiry, result.resumeToken).catch((error) => console.error(error))
-  sendJson(res, 200, { id: result.id, customerKey: result.customerKey, status: 'pending' })
+  await notifyNewInquiry(inquiry).catch((error) => console.error(error))
+  sendJson(res, 200, { id: result.id, status: 'pending' })
 }
 
-async function notifyNewInquiry(inquiry, resumeToken) {
+async function notifyNewInquiry(inquiry) {
   if (!inquiry) return
   const money = formatMoney(inquiry.orientation_total)
   await deliver({
@@ -432,8 +458,8 @@ async function notifyNewInquiry(inquiry, resumeToken) {
       '',
       `Upit za posao „${skillLabel(inquiry.skill)}” je primljen i čeka odobrenje. Majstor ga još ne vidi.`,
       '',
-      'Iste projekte možeš da nastaviš i na drugom uređaju:',
-      `${publicUrl()}/nastavi/${resumeToken}`,
+      'Status upita i sve svoje projekte vidiš na profilu:',
+      `${publicUrl()}/nalog`,
       '',
       'Mera',
     ].join('\n'),
@@ -627,6 +653,150 @@ function handleJson(req, res, done) {
       console.error(error)
       sendJson(res, 500, { error: 'Zahtev nije sačuvan.' })
     })
+}
+
+// ---------- Nalog kupca ----------
+
+function handleAccount(url, req, res) {
+  const reply = (result, status = 200) => sendJson(res, result?.error ? 400 : status, result)
+  const signIn = (result) => {
+    if (!result || result.error) return reply(result || { error: 'Prijava nije uspela.' })
+    setSessionCookie(res, result.token)
+    sendJson(res, 200, { user: result.user })
+  }
+
+  if (url === '/api/account/config' && req.method === 'GET') {
+    return sendJson(res, 200, { googleClientId: process.env.GOOGLE_CLIENT_ID || '', mailReady: mailReady() })
+  }
+  if (url === '/api/account/me' && req.method === 'GET') {
+    return sendJson(res, 200, { user: currentUser(req) })
+  }
+  if (url === '/api/account/register' && req.method === 'POST') {
+    return handleJson(req, res, (raw) => signIn(registerUser(raw)))
+  }
+  if (url === '/api/account/login' && req.method === 'POST') {
+    return handleJson(req, res, (raw) => {
+      const result = loginUser(raw.email, raw.password)
+      if (!result) return sendJson(res, 401, { error: 'Imejl ili lozinka nisu tačni.' })
+      signIn(result)
+    })
+  }
+  if (url === '/api/account/google' && req.method === 'POST') {
+    return handleJson(req, res, async (raw) => {
+      const clientId = process.env.GOOGLE_CLIENT_ID
+      if (!clientId) return sendJson(res, 503, { error: 'Prijava preko Google-a još nije podešena. Prijavi se imejlom i lozinkom.' })
+      const profile = await verifyGoogle(raw.credential, clientId)
+      if (!profile) return sendJson(res, 401, { error: 'Google prijava nije potvrđena. Pokušaj ponovo.' })
+      signIn(googleUser(profile))
+    })
+  }
+  if (url === '/api/account/logout' && req.method === 'POST') {
+    endSession(sessionToken(req))
+    clearSessionCookie(res)
+    return sendJson(res, 200, { ok: true })
+  }
+  if (url === '/api/account/forgot' && req.method === 'POST') {
+    return handleJson(req, res, async (raw) => {
+      const reset = createReset(raw.email)
+      if (reset) {
+        await deliver({
+          to: reset.email,
+          subject: 'Nova lozinka za Mera nalog',
+          text: [
+            `Zdravo ${reset.name},`,
+            '',
+            'Neko je zatražio novu lozinku za ovaj nalog. Ako si to ti, otvori link u narednih sat vremena:',
+            `${publicUrl()}/nalog/nova-lozinka/${reset.token}`,
+            '',
+            'Ako nisi ti, samo zanemari ovu poruku. Stara lozinka i dalje važi.',
+            '',
+            'Mera',
+          ].join('\n'),
+        }).catch((error) => console.error(error))
+      }
+      // Isti odgovor i kad nalog ne postoji, da se imejlovi ne mogu proveravati.
+      sendJson(res, 200, { ok: true })
+    })
+  }
+  if (url === '/api/account/reset' && req.method === 'POST') {
+    return handleJson(req, res, (raw) => signIn(resetPassword(raw.token, raw.password)))
+  }
+
+  const user = currentUser(req)
+  if (!user) return sendJson(res, 401, { error: 'Prijava je istekla. Prijavi se ponovo.' })
+  const token = sessionToken(req)
+
+  if (url === '/api/account/profile' && req.method === 'PUT') {
+    return handleJson(req, res, (raw) => reply(updateProfile(user.id, raw)))
+  }
+  if (url === '/api/account/password' && req.method === 'POST') {
+    return handleJson(req, res, (raw) => reply(changePassword(user.id, token, raw.current, raw.next)))
+  }
+  if (url === '/api/account/logout-others' && req.method === 'POST') {
+    endOtherSessions(user.id, token)
+    return sendJson(res, 200, { ok: true })
+  }
+  if (url === '/api/account/delete' && req.method === 'POST') {
+    return handleJson(req, res, (raw) => {
+      if (String(raw.confirm || '').trim().toLowerCase() !== user.email) return sendJson(res, 400, { error: 'Za brisanje upiši imejl naloga.' })
+      deleteUser(user.id)
+      clearSessionCookie(res)
+      sendJson(res, 200, { ok: true })
+    })
+  }
+  if (url === '/api/billing/state' && req.method === 'GET') {
+    return sendJson(res, 200, { state: readBilling(user.id) })
+  }
+  if (url === '/api/billing/pay' && req.method === 'POST') {
+    return handleJson(req, res, (raw) => reply(payOrder(user.id, raw.order, raw.method)))
+  }
+  if (url === '/api/billing/unlock' && req.method === 'POST') {
+    return handleJson(req, res, (raw) => reply(unlockProject(user.id, raw.projectId)))
+  }
+  if (url === '/api/billing/company' && req.method === 'PUT') {
+    return handleJson(req, res, (raw) => reply(saveCompany(user.id, raw)))
+  }
+  if (url === '/api/billing/test' && req.method === 'POST') {
+    return handleJson(req, res, (raw) => reply(testBilling(user.id, raw.action, raw.days)))
+  }
+  sendJson(res, 404, { error: 'Nepoznat zahtev.' })
+}
+
+// Google šalje potpisan ID token; tokeninfo proverava potpis i rok.
+async function verifyGoogle(credential, clientId) {
+  if (typeof credential !== 'string' || credential.length > 4096) return null
+  try {
+    const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`)
+    if (!response.ok) return null
+    const info = await response.json()
+    if (info.aud !== clientId || String(info.email_verified) !== 'true' || !info.sub) return null
+    return { sub: String(info.sub), email: String(info.email || ''), name: String(info.name || '') }
+  } catch (error) {
+    console.error(error)
+    return null
+  }
+}
+
+function currentUser(req) {
+  return userFromToken(sessionToken(req))
+}
+
+function sessionToken(req) {
+  const header = req.headers.cookie || ''
+  for (const part of header.split(';')) {
+    const [name, ...rest] = part.trim().split('=')
+    if (name === SESSION_COOKIE) return /^[a-f0-9]{64}$/.test(rest.join('=')) ? rest.join('=') : ''
+  }
+  return ''
+}
+
+function setSessionCookie(res, token) {
+  const secure = publicUrl().startsWith('https://') ? '; Secure' : ''
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 24 * 60 * 60}${secure}`)
+}
+
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`)
 }
 
 function bearer(req) {

@@ -7,7 +7,7 @@ import { DIY, SUBSCRIPTIONS, YEARLY_PAID_MONTHS, diyPrice, footprintArea, subscr
 import { navigate } from '../nav'
 import { formatDin } from '../prices'
 
-const FREE_ITEMS = ['3D konfigurator bez ograničenja', 'Orijentaciona cena dok menjaš objekat', 'Zbir po poslovima', 'Upiti majstorima i firmama, bez naknade', 'Čuvanje projekata u pregledaču']
+const FREE_ITEMS = ['3D konfigurator bez ograničenja', 'Orijentaciona cena dok menjaš objekat', 'Zbir po poslovima', 'Upiti majstorima i firmama, bez naknade (uz besplatan nalog)', 'Sačuvani projekti i statusi upita na nalogu']
 
 const DIY_ITEMS = [
   'Crteži sa kotama i brojevima pozicija: osnova, krov, sve fasade i presek',
@@ -57,7 +57,7 @@ export function PlansPage({ scene, projectName, billing }) {
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Plan name="Besplatno" price="0 RSD" note="bez naloga i bez roka" items={FREE_ITEMS}>
+          <Plan name="Besplatno" price="0 RSD" note="crtanje bez naloga, bez roka" items={FREE_ITEMS}>
             <button type="button" onClick={() => navigate('/konfigurator')} className="w-full rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700">
               Otvori konfigurator
             </button>
@@ -127,7 +127,7 @@ export function PlansPage({ scene, projectName, billing }) {
         {subscription?.plan.branding && <CompanyForm company={state.company} />}
 
         <p className="mt-8 max-w-2xl text-sm leading-relaxed text-stone-600">
-          Plaćanje je trenutno probno: kupovina se beleži samo u ovom pregledaču i novac se ne naplaćuje. Cene paketa su privremene.
+          Paket se vezuje za tvoj nalog, pa važi na svakom uređaju na kom se prijaviš. Plaćanje je trenutno probno i novac se ne naplaćuje. Cene paketa su privremene.
         </p>
       </div>
     </div>
@@ -166,7 +166,7 @@ function CompanyForm({ company }) {
   return (
     <section className="mt-8 max-w-2xl rounded-lg border border-stone-300 bg-white p-5">
       <h2 className="text-2xl leading-none font-bold text-stone-950">Podaci firme za PDF</h2>
-      <p className="mt-1.5 text-sm text-stone-600">Stoje u zaglavlju dokumentacije umesto oznake Mera. Čuvaju se samo u ovom pregledaču.</p>
+      <p className="mt-1.5 text-sm text-stone-600">Stoje u zaglavlju dokumentacije umesto oznake Mera. Čuvaju se na tvom nalogu.</p>
       <div className="mt-4 space-y-3">
         <label className="block text-sm">
           <span className="mb-1 block font-medium text-stone-800">Naziv firme</span>

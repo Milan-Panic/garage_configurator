@@ -56,6 +56,7 @@ import { navigate } from '../nav'
 import { packageOffers } from '../partners'
 import { formatDin, quoteItems } from '../prices'
 import { formatSavedAt } from '../projects'
+import { openAccountPrompt, useAccount } from '../account'
 import { PITCH_LIMITS, ROOF_FALLS, ROOF_KINDS, ROOF_RIDGES, roofGeometry } from '../roof'
 import { MAX_ROOMS, ROOM_CORNERS, ROOM_KINDS, roomKind, roomLimits } from '../rooms'
 import {
@@ -182,7 +183,7 @@ export function ControlPanel(props) {
     : saveNotice
       ? { tone: 'bg-emerald-500', text: saveNotice }
       : !activeProjectId
-        ? { tone: 'bg-stone-300', text: projectDirty ? 'Nije sačuvano' : 'Nov projekat' }
+        ? { tone: 'bg-stone-300', text: projectDirty ? 'Nije sačuvano na nalogu' : 'Nov projekat' }
         : projectDirty
           ? { tone: 'bg-amber-400', text: 'Čuvam…' }
           : { tone: 'bg-emerald-500', text: 'Sačuvano' }
@@ -209,7 +210,7 @@ export function ControlPanel(props) {
           <IconButton label="Ponovi (Ctrl+Y)" disabled={!canRedo} onClick={onRedo} icon={Redo2} />
           <button
             type="button"
-            onClick={onSaveProject}
+            onClick={() => onSaveProject()}
             className="flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-stone-700"
           >
             <Save size={15} />
@@ -415,7 +416,17 @@ function ShapeTab({ scene, estimate, billing, onDimensionChange, onSceneChange, 
           onChange={(altitude) => onPartChange('site', { altitude, place: PLACES.find((entry) => entry.id === site.place)?.altitude === altitude ? site.place : 'custom' })}
           onSettle={onSettle}
         />
-        <Segmented label="Vetar" value={site.wind} options={WIND_OPTIONS} onChange={(wind) => onSceneChange({ site: { ...site, wind } })} columns={3} />
+        <Hint>
+          {snowLoad(site) > 1
+            ? `Iznad 500 m sneg raste sa visinom. Teži sneg traži jači krovni nosač, a jači profil podiže cenu konstrukcije.`
+            : 'Do 500 m sneg se računa kao 1,0 kN/m², pa visina ovde ne menja ni nosač ni cenu.'}
+        </Hint>
+        <Segmented label="Vetar" value={site.wind} options={WIND_OPTIONS} onChange={(wind) => onSceneChange({ site: { ...site, wind } })} columns={2} />
+        <Hint>
+          {site.wind === 'exposed'
+            ? 'Izložena lokacija dobija po jedno polje sa dijagonalom više u zidovima i krovu, dodatnu rožnjaču i stubove za broj jače. Zato je konstrukcija skuplja.'
+            : 'Dijagonale idu u krajnja polja zidova i krova. Izaberi Izloženo ako je objekat na brdu, grebenu ili na košavi.'}
+        </Hint>
         <div className="grid grid-cols-2 gap-2">
           <Stat label="Sneg na krovu" value={`${String(snowLoad(site)).replace('.', ',')} kN/m²`} />
           <Stat label={estimate.sizing.truss ? 'Pojas rešetke' : 'Krovni nosač'} value={`${Math.round((estimate.sizing.truss ? estimate.sizing.chord.use : estimate.sizing.rafter.use) * 100)}% iskorišćen`} />
@@ -423,6 +434,7 @@ function ShapeTab({ scene, estimate, billing, onDimensionChange, onSceneChange, 
         <Hint>
           Presek nosača prati sneg i raspon: {estimate.profiles.rafter.name} preko {estimate.sizing.span.toFixed(2).replace('.', ',')} m. Vrednosti su okvirne; merodavan je proračun statičara po
           SRPS EN 1991.
+          {!estimate.sizing.ok && ' Ni najjači profil ne nosi ovaj sneg na ovom rasponu, pa se cena više ne menja: uključi rešetkasti nosač ili smanji raspon.'}
         </Hint>
       </Section>
 
@@ -693,7 +705,8 @@ function OpeningsTab({
 }) {
   const { dimensions, door, windows } = scene
   const pedestrianDoors = scene.pedestrianDoors || []
-  const doorOptions = doorMaterialsFor(door.style === 'none' ? 'sectional' : door.style)
+  const leafless = door.style === 'none' || door.style === 'opening'
+  const doorOptions = doorMaterialsFor(leafless ? 'sectional' : door.style)
   const doorSpec = findMaterial(DOOR_MATERIALS, scene.doorMaterialId)
   const selectedWindow = windows.find((item) => selected?.kind === 'window' && item.id === selected.id)
   const selectedPedestrian = pedestrianDoors.find((item) => selected?.kind === 'pedestrian' && item.id === selected.id)
@@ -719,21 +732,29 @@ function OpeningsTab({
             </button>
           ))}
         </div>
+        {door.style === 'none' && <Hint>Zid ostaje pun, bez otvora. Za ulaz bez krila izaberi Samo otvor.</Hint>}
         {door.style !== 'none' && (
           <>
-            <MaterialGrid
-              options={doorOptions}
-              value={doorOptions.some((item) => item.id === scene.doorMaterialId) ? scene.doorMaterialId : doorOptions[0].id}
-              color={scene.doorColor}
-              onChange={(doorMaterialId) => onSceneChange({ doorMaterialId, doorColor: null })}
-            />
-            {doorSpec.tintable && (
+            {!leafless && (
+              <MaterialGrid
+                options={doorOptions}
+                value={doorOptions.some((item) => item.id === scene.doorMaterialId) ? scene.doorMaterialId : doorOptions[0].id}
+                color={scene.doorColor}
+                onChange={(doorMaterialId) => onSceneChange({ doorMaterialId, doorColor: null })}
+              />
+            )}
+            {!leafless && doorSpec.tintable && (
               <ColorRow label="Boja vrata" value={scene.doorColor} base={doorSpec} onChange={(doorColor) => onSceneChange({ doorColor })} />
             )}
             <Segmented label="Zid" value={door.wall} options={wallOptions} onChange={(wall) => onDoorChange({ wall })} />
             <Slider label="Širina" value={door.width} {...limits.width} onChange={(width) => onDoorChange({ width })} onSettle={onSettle} />
             <Slider label="Visina" value={door.height} {...limits.height} onChange={(height) => onDoorChange({ height })} onSettle={onSettle} />
             <Slider label="Položaj na zidu" value={door.along} {...limits.along} onChange={(along) => onDoorChange({ along })} onSettle={onSettle} />
+            {leafless && <Hint>{doorHint(door)}</Hint>}
+          </>
+        )}
+        {!leafless && (
+          <>
             <Slider
               label="Otvorenost"
               value={door.open}
@@ -868,6 +889,7 @@ function doorHint(door) {
   if (door.style === 'roller') return 'Rolo plašt silazi odozgo kroz vođice. Kutija traži oko 30 cm iznad otvora.'
   if (door.style === 'sectional') return 'Paneli klize uz vođice pod plafon. Iznad otvora treba bar 20 cm za oprugu.'
   if (door.style === 'tilt') return 'Kipno krilo se diže i ulazi pod plafon. Trećina krila pri otvaranju izlazi napolje.'
+  if (door.style === 'opening') return 'Otvor dobija stubove sa strane i nadvratnik, a obloga zida se seče oko njega. Krilo se može dodati kasnije.'
   return `Krilo više od 2 m dobija 3 šarke, do 2 m dobija 2. Na ovoj visini svako krilo nosi ${hingeCount(door.height)} šarke.`
 }
 
@@ -1456,6 +1478,7 @@ function EstimateTab({ scene, estimate, quote, total, partners, billing, onScene
 
 function ProjectsTab({ projects, activeProjectId, projectDirty, billing, onSaveProject, onNewProject, onOpenProject, onDeleteProject }) {
   const billingState = useBilling()
+  const account = useAccount()
   const [pending, setPending] = useState(null)
   const [pendingDeleteId, setPendingDeleteId] = useState(null)
   const active = projects.find((project) => project.id === activeProjectId) ?? null
@@ -1489,9 +1512,9 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, billing, onSaveP
           <p className="text-sm text-stone-800">Trenutne izmene nisu sačuvane.</p>
           <button
             type="button"
-            onClick={() => {
-              onSaveProject()
-              runSwitch(pending)
+            onClick={async () => {
+              const action = pending
+              if (await onSaveProject()) runSwitch(action)
             }}
             className="w-full rounded-md bg-stone-900 px-3 py-2 text-sm font-medium text-white"
           >
@@ -1506,11 +1529,17 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, billing, onSaveP
         </div>
       )}
       <Hint>
-        {active
-          ? `Otvoren je „${active.name}”. Izmene se same čuvaju posle pola sekunde.`
-          : 'Sačuvaj objekat da sledeći put nastaviš. Vidi ga samo ovaj pregledač, a link iz imejla ga otvara i na drugom uređaju.'}
+        {!account.user
+          ? 'Trenutni crtež se pamti u ovom pregledaču i bez naloga. Da sačuvaš više objekata, pošalješ upit ili kupiš paket, prijavi se.'
+          : active
+            ? `Otvoren je „${active.name}”. Izmene se same čuvaju na nalogu posle pola sekunde.`
+            : 'Sačuvaj objekat na nalog. Vidiš ga sa svakog uređaja na kom se prijaviš.'}
       </Hint>
-      {projects.length === 0 ? (
+      {!account.user ? (
+        <button type="button" onClick={() => openAccountPrompt()} className="w-full rounded-lg bg-stone-900 px-3 py-2.5 text-sm font-medium text-white">
+          Prijavi se ili napravi nalog
+        </button>
+      ) : projects.length === 0 ? (
         <p className="rounded-lg bg-white px-3 py-6 text-center text-sm text-stone-500 ring-1 ring-stone-200">Još nema sačuvanih objekata.</p>
       ) : (
         <ul className="space-y-1.5">

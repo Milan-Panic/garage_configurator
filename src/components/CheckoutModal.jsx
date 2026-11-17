@@ -18,6 +18,7 @@ function CheckoutModal({ order }) {
   const [method, setMethod] = useState('card')
   const [agreed, setAgreed] = useState(false)
   const [stage, setStage] = useState('form')
+  const [problem, setProblem] = useState('')
   const dialog = useRef(null)
   const diy = order.kind === 'diy'
   const until = billingNow() + (diy ? DIY.days : order.period === 'year' ? 365 : 30) * DAY
@@ -32,7 +33,13 @@ function CheckoutModal({ order }) {
     event.preventDefault()
     if (blocked) return
     setStage('paying')
-    pay(order, method).then(() => setStage('done'))
+    setProblem('')
+    pay(order, method)
+      .then(() => setStage('done'))
+      .catch((error) => {
+        setProblem(error.message)
+        setStage('form')
+      })
   }
 
   return (
@@ -128,11 +135,12 @@ function CheckoutModal({ order }) {
             {method === 'ips' && <IpsMock price={order.price} />}
             {method === 'slip' && <SlipMock order={order} />}
 
+            {problem && <p className="text-sm text-red-700">{problem}</p>}
             <button type="submit" disabled={blocked} className="btn-tape w-full px-4 py-3 text-base disabled:cursor-not-allowed disabled:opacity-50">
               {stage === 'paying' ? 'Obrađujem uplatu…' : `Plati ${formatDin(order.price)}`}
             </button>
             <p className="text-xs leading-relaxed text-stone-500">
-              Ovo je proba toka plaćanja. Novac se ne naplaćuje i nijedan podatak iz ovog prozora se ne čuva niti šalje.
+              Ovo je proba toka plaćanja. Novac se ne naplaćuje, a podaci o kartici se ne čuvaju niti šalju. Paket se beleži na tvom nalogu.
             </p>
           </div>
         )}

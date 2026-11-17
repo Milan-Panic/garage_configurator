@@ -95,7 +95,7 @@ const SAMPLES = [
 ]
 
 const STEPS = [
-  { title: 'Složi objekat', text: 'Garaža, ostava, radionica ili magacin. Mere, krov, fasada, vrata i dodaci, a sačuvano ostaje u ovom pregledaču.' },
+  { title: 'Složi objekat', text: 'Garaža, ostava, radionica ili magacin. Mere, krov, fasada, vrata i dodaci. Crta se bez naloga, a sačuvani projekti su na tvom nalogu.' },
   { title: 'Vidi računicu', text: 'Orijentaciona cena i zbir po poslovima, besplatno. Menja se dok menjaš objekat.' },
   { title: 'Izaberi ponudu', text: 'Kad firme imaju cene, vidiš komplet ponudu za svoj objekat. Materijal za jedan paket ide od jedne firme.' },
   { title: 'Pošalji upit', text: 'Svaki posao ide majstoru koji ima taj skil. Ime, imejl i telefon ostavljaš tek tada.' },
@@ -110,11 +110,11 @@ const FEATURES = [
 
 const QUESTIONS = [
   ['Da li je cena ponuda?', 'Ne. To je orijentacija iz materijala i mera. Ponuda je cena koju majstor unese kad prihvati upit.'],
-  ['Da li treba nalog?', 'Ne. Crtež se pamti u pregledaču. Ime, prezime, imejl i telefon traže se tek na upitu.'],
+  ['Da li treba nalog?', 'Za crtanje ne treba: trenutni crtež se pamti u pregledaču. Nalog treba kad čuvaš projekte, šalješ upit ili kupuješ paket. Pravi se imejlom ili preko Google-a.'],
   ['Kada majstor dobija moj broj?', 'Kad prihvati upit i unese svoju cenu. Tada i ti vidiš njegov telefon. Upit i kontakt ne plaćaš.'],
   ['Šta se plaća?', 'Dokumentacija za izradu: crteži sa kotama, spisak profila, raspored rezanja i lista za nabavku. Konfigurator, orijentaciona cena i upiti su besplatni. Cene su na strani Paketi.'],
   ['Da li je ponuda firme konačna?', 'Ne. Računa se iz cenovnika firme za tvoje količine. Firma potvrđuje konačnu cenu i dostavu kad dobije upit.'],
-  ['Ko vidi moje projekte?', 'Samo pregledač u kom su sačuvani. Link iz imejla otvara iste projekte na drugom uređaju.'],
+  ['Ko vidi moje projekte?', 'Samo ti, kad se prijaviš na svoj nalog, sa bilo kog uređaja. Majstor ili firma dobija crteže i računicu samo za projekat uz koji pošalješ upit.'],
   ['Mogu li da menjam objekat posle kupovine paketa?', 'Paket Uradi sam zaključava širinu i dužinu, jer je cena vezana za površinu. Visinu, krov, fasadu, vrata, prozore i dodatke menjaš 30 dana i štampaš dokumentaciju koliko god puta treba.'],
   ['Da li je ovo statički proračun?', 'Ne. Preseci profila su uobičajeni za lake montažne objekte. Za velike raspone treba statičar, a sajt upozorava kad mere pređu tu granicu.'],
   ['Da li mi treba dozvola?', 'Zavisi od toga čemu objekat služi i gde stoji. Kratak pregled je u Vodiču za dozvole, a konačan odgovor daje opštinski urbanizam.'],

@@ -90,7 +90,7 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
 
   const sizing = estimate.sizing
   const member = sizing.truss ? sizing.chord : sizing.rafter
-  const wind = WIND_OPTIONS.find((entry) => entry.id === scene.site?.wind) ?? WIND_OPTIONS[1]
+  const wind = WIND_OPTIONS.find((entry) => entry.id === scene.site?.wind) ?? WIND_OPTIONS[0]
   const ral = (id) => (findRal(id) ? `RAL ${id} ${findRal(id).name}` : 'fabrička boja')
   const facts = [
     ['Vrsta objekta', `${type.name}${units > 1 ? `, ${units} jedinice u nizu` : ''}`],
@@ -100,7 +100,7 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
     ['Površina osnove', `${num(footprint)} m²`],
     ['Krov', roof.kind === 'flat' ? 'ravan' : `${roof.kind === 'mono' ? 'jedna voda' : 'dve vode'}, nagib ${roof.pitch}°`],
     ['Krovni nosač', `${estimate.profiles.rafter.name}${sizing.truss ? ' (rešetka)' : ''}`],
-    ['Glavna vrata', scene.door.style === 'none' ? 'otvor bez krila' : `${num(scene.door.width)} × ${num(scene.door.height)} m`],
+    ['Glavna vrata', scene.door.style === 'none' ? 'nema' : scene.door.style === 'opening' ? `otvor bez krila, ${num(scene.door.width)} × ${num(scene.door.height)} m` : `${num(scene.door.width)} × ${num(scene.door.height)} m`],
     ['Prozori i bočna vrata', `${scene.windows.length * units} prozora, ${(scene.pedestrianDoors || []).length * units} vrata`],
     ['Izolacija', INSULATION_OPTIONS.find((entry) => entry.id === scene.insulation)?.name ?? 'bez'],
     ['Prostorije', (scene.rooms || []).length ? scene.rooms.map((room) => roomKind(room.kind).name).join(', ') : 'nema'],
@@ -109,7 +109,7 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
   const swatches = [
     { label: 'Zidovi', spec: materials.wallMaterial, color: ral(scene.wallColor) },
     { label: 'Krov', spec: materials.roofMaterial, color: ral(scene.roofColor) },
-    ...(scene.door.style === 'none' ? [] : [{ label: 'Vrata', spec: materials.doorMaterial, color: ral(scene.doorColor) }]),
+    ...(scene.door.style === 'none' || scene.door.style === 'opening' ? [] : [{ label: 'Vrata', spec: materials.doorMaterial, color: ral(scene.doorColor) }]),
     { label: 'Pod', spec: materials.floorMaterial, color: '' },
   ]
   const viewProps = {

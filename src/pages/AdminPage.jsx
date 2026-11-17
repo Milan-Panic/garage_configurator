@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAccount } from '../account'
 import { resetBilling, shiftClock, useBilling } from '../billing/paymentService'
 import { formatDin } from '../prices'
 import { AdminPartners } from './AdminPartners'
@@ -234,27 +235,40 @@ function CommissionRow({ item, onSave }) {
   )
 }
 
-// Alat za probu naplate: kupovine žive samo u ovom pregledaču.
+// Alat za probu naplate: radi nad kupčevim nalogom koji je prijavljen u ovom pregledaču.
 function DemoBilling() {
   const state = useBilling()
+  const account = useAccount()
+  const [problem, setProblem] = useState('')
+  const run = (action) => {
+    setProblem('')
+    action().catch((error) => setProblem(error.message))
+  }
   return (
     <section className="space-y-3">
       <h2 className="text-xl font-semibold text-stone-950">Demo kupovine paketa</h2>
-      <p className="max-w-2xl text-sm text-stone-700">
-        U ovom pregledaču: {state.purchases.length} kupovina paketa Uradi sam, pretplata {state.subscription ? state.subscription.plan : 'nema'}, sat
-        pomeren za {state.clockOffsetDays} dana.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => shiftClock(31)} className="rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white">
-          Pomeri sat 31 dan unapred
-        </button>
-        <button type="button" onClick={() => shiftClock(0)} className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm">
-          Vrati sat
-        </button>
-        <button type="button" onClick={resetBilling} className="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700">
-          Poništi sve demo kupovine
-        </button>
-      </div>
+      {!account.user ? (
+        <p className="max-w-2xl text-sm text-stone-700">Paketi su vezani za nalog kupca. Prijavi se kao kupac (dugme u zaglavlju) da probaš istek paketa na tom nalogu.</p>
+      ) : (
+        <>
+          <p className="max-w-2xl text-sm text-stone-700">
+            Nalog {account.user.email}: {state.purchases.length} kupovina paketa Uradi sam, pretplata {state.subscription ? state.subscription.plan : 'nema'}, sat
+            pomeren za {state.clockOffsetDays} dana.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => run(() => shiftClock(31))} className="rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white">
+              Pomeri sat 31 dan unapred
+            </button>
+            <button type="button" onClick={() => run(() => shiftClock(0))} className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm">
+              Vrati sat
+            </button>
+            <button type="button" onClick={() => run(resetBilling)} className="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700">
+              Poništi sve demo kupovine
+            </button>
+          </div>
+          {problem && <p className="text-sm text-red-700">{problem}</p>}
+        </>
+      )}
     </section>
   )
 }

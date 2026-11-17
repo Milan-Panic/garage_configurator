@@ -145,7 +145,7 @@ export function quoteItems(scene, estimate) {
   add('stolarija', 'Prozori po površini otvora', windowArea, 'm²', 'window-m2')
   add('stolarija', 'Bočna pešačka vrata', (scene.pedestrianDoors || []).length * units + (scene.canopy?.enabled && scene.canopy.closed ? 1 : 0), 'kom', 'pedestrian')
   const door = scene.door
-  if (door && door.style !== 'none') {
+  if (door && door.style !== 'none' && door.style !== 'opening') {
     const area = door.width * door.height * units
     if (door.style === 'roller') add('rolo', 'Rolo vrata po površini otvora', area, 'm²', 'roller-m2')
     else if (door.style === 'sectional') add('rolo', 'Sekcijska vrata po površini otvora', area, 'm²', 'sectional-m2')

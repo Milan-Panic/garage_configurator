@@ -1,41 +1,20 @@
 import { useSyncExternalStore } from 'react'
+import { request } from '../account'
 import { DIY, diyPrice, footprintArea, subscriptionPlan, subscriptionPrice } from './plans'
 
-// Demo plaćanje. Ništa se ne šalje sa uređaja: kupovine žive u localStorage.
-// Kad stigne pravi procesor, menja se samo ovaj fajl: `pay` zove server,
-// a `readState` čita stanje koje server potvrdi. Ostatak aplikacije koristi
-// isključivo funkcije izvezene odavde i iz entitlements.js.
+// Probna naplata. Kupovine su vezane za nalog i čuvaju se na serveru; novac se ne naplaćuje.
+// Kad stigne pravi procesor, menja se server (`payOrder`) i `pay` ovde. Ostatak aplikacije
+// koristi isključivo funkcije izvezene odavde i iz entitlements.js.
 
-const KEY = 'mera-billing-v1'
 const DAY = 24 * 60 * 60 * 1000
 const EMPTY = { purchases: [], subscription: null, unlocks: [], company: { name: '', details: '', logo: '' }, clockOffsetDays: 0 }
 
-let state = read()
+let state = EMPTY
+let companyTimer = null
 const listeners = new Set()
-
-function read() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null')
-    if (!raw || typeof raw !== 'object') return EMPTY
-    return {
-      purchases: Array.isArray(raw.purchases) ? raw.purchases : [],
-      subscription: raw.subscription && typeof raw.subscription === 'object' ? raw.subscription : null,
-      unlocks: Array.isArray(raw.unlocks) ? raw.unlocks : [],
-      company: { ...EMPTY.company, ...(raw.company && typeof raw.company === 'object' ? raw.company : {}) },
-      clockOffsetDays: Number.isFinite(raw.clockOffsetDays) ? raw.clockOffsetDays : 0,
-    }
-  } catch {
-    return EMPTY
-  }
-}
 
 function write(next) {
   state = next
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next))
-  } catch {
-    // Bez mesta u pregledaču kupovina važi do zatvaranja kartice.
-  }
   listeners.forEach((listener) => listener())
 }
 
@@ -44,20 +23,26 @@ function subscribe(listener) {
   return () => listeners.delete(listener)
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key !== KEY) return
-    state = read()
-    listeners.forEach((listener) => listener())
-  })
-}
-
 export function readState() {
   return state
 }
 
 export function useBilling() {
   return useSyncExternalStore(subscribe, readState)
+}
+
+// Učitava pakete prijavljenog naloga; bez naloga nema ni paketa.
+export async function loadBilling(signedIn) {
+  if (!signedIn) {
+    write(EMPTY)
+    return
+  }
+  try {
+    const payload = await request('/api/billing/state')
+    write(payload.state || EMPTY)
+  } catch {
+    write(EMPTY)
+  }
 }
 
 // Sat aplikacije. Admin može da ga pomeri unapred da proveri istek paketa.
@@ -86,47 +71,35 @@ export function subscriptionOrder(planId, period) {
   return { kind: 'subscription', title: plan.name, plan: plan.id, period, price: subscriptionPrice(plan.id, period) }
 }
 
-// Simulira naplatu: kratko čekanje, pa upis kupovine. Podaci o kartici se ne primaju.
-export function pay(order, method) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const now = billingNow()
-      const receipt = { id: `demo-${now.toString(36)}`, paidAt: now, method, price: order.price }
-      if (order.kind === 'diy') {
-        const purchase = {
-          ...receipt,
-          projectId: order.projectId,
-          expiresAt: now + DIY.days * DAY,
-          width: order.width,
-          length: order.length,
-          units: order.units,
-          area: order.area,
-        }
-        write({ ...state, purchases: [...state.purchases, purchase] })
-      } else {
-        const days = order.period === 'year' ? 365 : 30
-        write({ ...state, subscription: { ...receipt, plan: order.plan, period: order.period, paidUntil: now + days * DAY } })
-      }
-      resolve(receipt)
-    }, 1400)
-  })
+// Server računa cenu i mere iz sačuvanog projekta. Podaci o kartici se ne primaju.
+export async function pay(order, method) {
+  const payload = await request('/api/billing/pay', { method: 'POST', body: { order, method } })
+  write(payload.state)
+  return payload.receipt
 }
 
 // Pretplatnik otvara detalje za projekat. Starter time troši jedno mesto u mesecu.
-export function unlockProject(projectId) {
-  if (state.unlocks.some((entry) => entry.projectId === projectId && entry.subscriptionId === state.subscription?.id)) return
-  write({ ...state, unlocks: [...state.unlocks, { projectId, at: billingNow(), subscriptionId: state.subscription?.id ?? null }] })
+export async function unlockProject(projectId) {
+  const payload = await request('/api/billing/unlock', { method: 'POST', body: { projectId } })
+  write(payload.state)
 }
 
+// Podaci firme se menjaju dok se kuca, a na server idu kad kucanje stane.
 export function saveCompany(company) {
   write({ ...state, company: { ...state.company, ...company } })
+  clearTimeout(companyTimer)
+  companyTimer = setTimeout(() => {
+    request('/api/billing/company', { method: 'PUT', body: state.company }).catch(() => {})
+  }, 600)
 }
 
-// Za testiranje iz /admin.
-export function resetBilling() {
-  write({ ...EMPTY })
+// Za testiranje iz /admin, na nalogu koji je prijavljen u ovom pregledaču.
+export async function resetBilling() {
+  const payload = await request('/api/billing/test', { method: 'POST', body: { action: 'reset' } })
+  write(payload.state)
 }
 
-export function shiftClock(days) {
-  write({ ...state, clockOffsetDays: days === 0 ? 0 : (state.clockOffsetDays || 0) + days })
+export async function shiftClock(days) {
+  const payload = await request('/api/billing/test', { method: 'POST', body: { action: 'clock', days } })
+  write(payload.state)
 }

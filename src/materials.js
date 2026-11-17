@@ -630,7 +630,8 @@ export const DOOR_STYLES = [
   { id: 'roller', name: 'Rolo', detail: 'Lamele se namotavaju u kutiju' },
   { id: 'double', name: 'Dvokrilna', detail: 'Dva krila na šarkama' },
   { id: 'single', name: 'Jednokrilna', detail: 'Jedno krilo na šarkama' },
-  { id: 'none', name: 'Bez vrata', detail: 'Otvoren ulaz' },
+  { id: 'opening', name: 'Samo otvor', detail: 'Uokviren otvor sa nadvratnikom, bez krila' },
+  { id: 'none', name: 'Bez vrata', detail: 'Zid ostaje zatvoren, bez otvora' },
 ]
 
 export function doorMaterialsFor(style) {

@@ -2,12 +2,11 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { openAccounts } from './accountDb.js'
 import { openPartners } from './partnerDb.js'
 
 const DEMO_PASSWORD = 'radionica'
 const REMINDER_MS = 3 * 24 * 60 * 60 * 1000
-const PROJECT_ID = /^project-[a-z0-9-]{4,80}$/
-const VISITOR_KEY = /^[a-f0-9]{24,80}$/
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const SKILLS = ['konstrukcija', 'krov', 'oluk', 'temelj', 'rolo', 'stolarija', 'struja', 'oprema']
@@ -94,23 +93,6 @@ export function openPlatform(root) {
       admin_id TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS projects (
-      visitor_key TEXT NOT NULL,
-      id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      scene_json TEXT NOT NULL,
-      updated_at INTEGER NOT NULL,
-      PRIMARY KEY (visitor_key, id)
-    );
-    CREATE TABLE IF NOT EXISTS visitor_active (
-      visitor_key TEXT PRIMARY KEY,
-      active_id TEXT
-    );
-    CREATE TABLE IF NOT EXISTS resume_tokens (
-      token TEXT PRIMARY KEY,
-      visitor_key TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL
-    );
     CREATE TABLE IF NOT EXISTS mail_log (
       id TEXT PRIMARY KEY,
       created_at TEXT NOT NULL,
@@ -121,7 +103,6 @@ export function openPlatform(root) {
       error TEXT
     );
     CREATE INDEX IF NOT EXISTS inquiries_customer ON inquiries (customer_key);
-    CREATE INDEX IF NOT EXISTS projects_visitor ON projects (visitor_key);
   `)
   ensureColumn('inquiries', 'first_name', 'TEXT')
   ensureColumn('inquiries', 'last_name', 'TEXT')
@@ -134,6 +115,7 @@ export function openPlatform(root) {
   seedCraftsmen()
   seedAdmin()
   openPartners(database, { hashPassword, checkPassword })
+  openAccounts(database, { hashPassword, checkPassword })
   return database
 }
 
@@ -265,20 +247,22 @@ export function createInquiry(input) {
   if (!firstName || !lastName || !phone || !EMAIL.test(email)) {
     return { error: 'Ime, prezime, imejl i telefon su obavezni.' }
   }
-  let customerKey = clean(input.customerKey, 80)
-  if (!VISITOR_KEY.test(customerKey)) customerKey = randomBytes(18).toString('hex')
+  // Ključ kupca je id naloga; postavlja ga server iz sesije, ne pregledač.
+  const customerKey = clean(input.customerKey, 80)
+  if (!customerKey) return { error: 'Za upit je potrebna prijava.' }
   const id = `upit-${Date.now().toString(36)}${randomBytes(2).toString('hex')}`
   const name = `${firstName} ${lastName}`
   database.prepare(`
     INSERT INTO inquiries (
-      id, created_at, customer_key, project_name, customer_name, first_name, last_name,
+      id, created_at, customer_key, project_id, project_name, customer_name, first_name, last_name,
       customer_phone, customer_email, note, skill, craftsman_id, orientation_total, status,
       estimate_json, views_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
   `).run(
     id,
     new Date().toISOString(),
     customerKey,
+    clean(input.projectId, 90) || null,
     clean(input.projectName, 80),
     name,
     firstName,
@@ -292,7 +276,7 @@ export function createInquiry(input) {
     JSON.stringify(input.estimate ?? null),
     JSON.stringify(input.views ?? []),
   )
-  return { id, customerKey, resumeToken: resumeTokenFor(customerKey) }
+  return { id, customerKey }
 }
 
 export function customerInquiries(customerKey) {
@@ -442,66 +426,6 @@ export function recentMail() {
   }))
 }
 
-export function readVisitorLibrary(visitorKey) {
-  const key = validVisitor(visitorKey)
-  if (!key) return { error: 'Pregledač nije prepoznat.' }
-  const projects = []
-  const rows = database.prepare('SELECT id, name, scene_json, updated_at FROM projects WHERE visitor_key = ?').all(key)
-  for (const row of rows) {
-    try {
-      const scene = JSON.parse(row.scene_json)
-      if (!scene || typeof scene !== 'object') continue
-      projects.push({ id: row.id, name: row.name, updatedAt: row.updated_at, scene })
-    } catch {
-      // A broken scene stays out of this visitor's list.
-    }
-  }
-  projects.sort((left, right) => right.updatedAt - left.updatedAt)
-  const active = database.prepare('SELECT active_id FROM visitor_active WHERE visitor_key = ?').get(key)
-  const activeId = projects.some((project) => project.id === active?.active_id) ? active.active_id : null
-  return { activeId, projects, visitorKey: key }
-}
-
-export function writeVisitorLibrary(visitorKey, raw) {
-  const key = validVisitor(visitorKey)
-  if (!key) return { error: 'Pregledač nije prepoznat.' }
-  const library = sanitizeLibrary(raw)
-  database.exec('BEGIN')
-  try {
-    database.prepare('DELETE FROM projects WHERE visitor_key = ?').run(key)
-    const insert = database.prepare(`
-      INSERT INTO projects (visitor_key, id, name, scene_json, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-    `)
-    for (const project of library.projects) {
-      insert.run(key, project.id, project.name, JSON.stringify(project.scene), project.updatedAt)
-    }
-    database.prepare(`
-      INSERT INTO visitor_active (visitor_key, active_id) VALUES (?, ?)
-      ON CONFLICT(visitor_key) DO UPDATE SET active_id = excluded.active_id
-    `).run(key, library.activeId)
-    database.exec('COMMIT')
-  } catch (error) {
-    database.exec('ROLLBACK')
-    throw error
-  }
-  return { ...library, visitorKey: key }
-}
-
-export function resumeVisitor(token) {
-  const row = database.prepare('SELECT visitor_key FROM resume_tokens WHERE token = ?').get(clean(token, 80))
-  if (!row) return null
-  return row.visitor_key
-}
-
-function resumeTokenFor(visitorKey) {
-  const existing = database.prepare('SELECT token FROM resume_tokens WHERE visitor_key = ?').get(visitorKey)
-  if (existing) return existing.token
-  const token = randomBytes(18).toString('hex')
-  database.prepare('INSERT INTO resume_tokens (token, visitor_key, created_at) VALUES (?, ?, ?)').run(token, visitorKey, new Date().toISOString())
-  return token
-}
-
 function presentInquiry(row, role) {
   // Kontakt se otvara čim majstor prihvati i kaže cenu. 'paid' je status iz starog modela.
   const open = row.status === 'accepted' || row.status === 'paid'
@@ -512,6 +436,7 @@ function presentInquiry(row, role) {
     createdAt: row.created_at,
     skill: row.skill,
     status: row.status,
+    projectId: row.project_id || null,
     projectName: row.project_name,
     orientationTotal: row.orientation_total,
     craftsmanPrice: row.craftsman_price,
@@ -558,32 +483,6 @@ function skillsOf(id) {
 function uniqueSkills(value) {
   const list = Array.isArray(value) ? value : []
   return [...new Set(list.map((item) => clean(item, 40)).filter((item) => SKILLS.includes(item)))]
-}
-
-function sanitizeLibrary(raw) {
-  const source = raw && typeof raw === 'object' ? raw : {}
-  const projects = []
-  const seen = new Set()
-  if (Array.isArray(source.projects)) {
-    for (const entry of source.projects) {
-      if (!entry || !PROJECT_ID.test(entry.id) || seen.has(entry.id) || !entry.scene || typeof entry.scene !== 'object') continue
-      seen.add(entry.id)
-      projects.push({
-        id: entry.id,
-        name: clean(entry.name, 60) || 'Objekat',
-        updatedAt: Number.isFinite(entry.updatedAt) ? entry.updatedAt : Date.now(),
-        scene: entry.scene,
-      })
-    }
-  }
-  projects.sort((left, right) => right.updatedAt - left.updatedAt)
-  const activeId = projects.some((project) => project.id === source.activeId) ? source.activeId : null
-  return { activeId, projects }
-}
-
-function validVisitor(value) {
-  const key = clean(value, 80)
-  return VISITOR_KEY.test(key) ? key : ''
 }
 
 function hashPassword(password) {

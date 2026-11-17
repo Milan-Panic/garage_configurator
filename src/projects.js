@@ -1,39 +1,19 @@
+import { request } from './account'
 import { initialScene, normalizeScene, scenesEqual } from './scene'
-import { visitorKey } from './visitor'
 
-const LEGACY_KEY = 'garage-projects-v1'
 const ID_PATTERN = /^project-[a-z0-9-]{4,80}$/
 
+// Sačuvani projekti žive na nalogu. Bez prijave biblioteka je prazna.
 export async function loadLibrary() {
-  const response = await fetch('/api/library', { headers: { 'X-Visitor-Key': visitorKey() } })
-  if (!response.ok) throw new Error('Projekti se ne mogu učitati sa diska.')
-  const payload = await response.json()
-  let library = normalizeLibrary(payload)
-  if (library.projects.length === 0) {
-    const migrated = readLegacy()
-    if (migrated.projects.length > 0) {
-      library = await persistLibrary(migrated)
-      try {
-        localStorage.removeItem(LEGACY_KEY)
-      } catch {
-        // The disk copy is already written.
-      }
-    }
-  }
-  return {
-    library,
-    directory: typeof payload.directory === 'string' ? payload.directory : '',
-  }
+  return normalizeLibrary(await request('/api/library'))
 }
 
 export async function persistLibrary(library) {
-  const response = await fetch('/api/library', {
+  const payload = await request('/api/library', {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', 'X-Visitor-Key': visitorKey() },
-    body: JSON.stringify({ activeId: library.activeId, projects: library.projects }),
+    body: { activeId: library.activeId, projects: library.projects },
   })
-  if (!response.ok) throw new Error('Projekat nije sačuvan na disk.')
-  return normalizeLibrary(await response.json())
+  return normalizeLibrary(payload)
 }
 
 export function createProjectId() {
@@ -66,6 +46,10 @@ export function formatSavedAt(timestamp) {
   }).format(timestamp)
 }
 
+export function emptyLibrary() {
+  return { activeId: null, projects: [] }
+}
+
 export function normalizeLibrary(raw) {
   if (!raw || !Array.isArray(raw.projects)) return emptyLibrary()
   const projects = []
@@ -83,18 +67,6 @@ export function normalizeLibrary(raw) {
   projects.sort((left, right) => right.updatedAt - left.updatedAt)
   const activeId = projects.some((project) => project.id === raw.activeId) ? raw.activeId : null
   return { activeId, projects }
-}
-
-function readLegacy() {
-  try {
-    return normalizeLibrary(JSON.parse(localStorage.getItem(LEGACY_KEY) ?? 'null'))
-  } catch {
-    return emptyLibrary()
-  }
-}
-
-function emptyLibrary() {
-  return { activeId: null, projects: [] }
 }
 
 function isProjectId(id) {
