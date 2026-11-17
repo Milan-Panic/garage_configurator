@@ -93,6 +93,7 @@ function createMiddleware(root) {
   startReminders()
 
   return (req, res, next) => {
+    noStore(res)
     const url = req.url?.split('?')[0]
     if (url === '/api/prices') {
       handlePrices(root, req, res).catch((error) => {
@@ -299,6 +300,14 @@ function createMiddleware(root) {
       sendJson(res, 500, { error: 'Čuvanje projekta nije uspelo.' })
     })
   }
+}
+
+// Cloudflare tunel inače `no-cache` na .js fajlovima pretvara u keš od 4 sata, pa pregledač
+// posle izmene učita mešavinu starih i novih modula i stranica ostane bela. `no-store` ne dira.
+function noStore(res) {
+  const setHeader = res.setHeader.bind(res)
+  res.setHeader = (name, value) => (String(name).toLowerCase() === 'cache-control' ? setHeader(name, 'no-store') : setHeader(name, value))
+  setHeader('Cache-Control', 'no-store')
 }
 
 function startReminders() {
