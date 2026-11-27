@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   AlertTriangle,
   AppWindow,
@@ -32,10 +32,11 @@ import {
   Zap,
 } from 'lucide-react'
 import { BUILDING_TYPES, CANOPY_FREE_AREA, CANOPY_LIMITS, CHARGER_OPTIONS, ELECTRIC_LIMITS, UNIT_LIMITS, VENTILATION_OPTIONS, buildingType, canopySpan } from '../buildings'
-import { ALTITUDE_LIMITS, DEFAULT_SITE, PLACES, WIND_OPTIONS, snowLoad } from '../site'
+import { ALTITUDE_LIMITS, DEFAULT_SITE, PLACES, WIND_OPTIONS, snowLoad, snowSource } from '../site'
 import { DEFAULT_SKYLIGHTS, SKYLIGHT_KINDS, SKYLIGHT_LIMITS } from '../skylights'
 import { DIMENSION_LIMITS, LIGHT_STRUCTURE, formatMeters } from '../config'
-import { hingeCount } from '../estimate'
+import { buildEstimate, hingeCount } from '../estimate'
+import { DEFAULT_STRUCTURE, PROTECTIONS, SYSTEMS, protectionOf, steelKg, structureCost, systemMismatch, systemOf } from '../systems'
 import { accessLabel, formatDate, projectAccess } from '../billing/entitlements'
 import { useBilling } from '../billing/paymentService'
 import { LockedPreview } from './LockedPreview'
@@ -271,7 +272,7 @@ export function ControlPanel(props) {
 
 /* ---------- Objekat ---------- */
 
-function ShapeTab({ scene, estimate, billing, onDimensionChange, onSceneChange, onRoofChange, onPartChange, onSettle }) {
+function ShapeTab({ scene, estimate, catalog, billing, onDimensionChange, onSceneChange, onRoofChange, onPartChange, onSettle }) {
   const { dimensions, roof } = scene
   const lock = billing.access.lock
   const site = scene.site || DEFAULT_SITE
@@ -418,23 +419,39 @@ function ShapeTab({ scene, estimate, billing, onDimensionChange, onSceneChange, 
         />
         <Hint>
           {snowLoad(site) > 1
-            ? `Iznad 500 m sneg raste sa visinom. Teži sneg traži jači krovni nosač, a jači profil podiže cenu konstrukcije.`
-            : 'Do 500 m sneg se računa kao 1,0 kN/m², pa visina ovde ne menja ni nosač ni cenu.'}
+            ? `Sneg ovde je teži od ravničarskog (${snowSource(site)}). Teži sneg traži jače nosače, venac i rožnjače, pa je konstrukcija skuplja.`
+            : 'Do 500 m sneg se računa kao 1,0 kN/m², pa visina ovde ne menja ni nosač ni cenu. Istok Srbije (Zaječar, Bor, Negotin) ima teži sneg po propisu.'}
         </Hint>
         <Segmented label="Vetar" value={site.wind} options={WIND_OPTIONS} onChange={(wind) => onSceneChange({ site: { ...site, wind } })} columns={2} />
         <Hint>
           {site.wind === 'exposed'
-            ? 'Izložena lokacija dobija po jedno polje sa dijagonalom više u zidovima i krovu, dodatnu rožnjaču i stubove za broj jače. Zato je konstrukcija skuplja.'
+            ? 'Izložena lokacija dobija po jedno polje sa dijagonalom više u zidovima i krovu, a stubovi, rigle i rožnjače se proveravaju na jači vetar. Zato je konstrukcija skuplja.'
             : 'Dijagonale idu u krajnja polja zidova i krova. Izaberi Izloženo ako je objekat na brdu, grebenu ili na košavi.'}
         </Hint>
         <div className="grid grid-cols-2 gap-2">
           <Stat label="Sneg na krovu" value={`${String(snowLoad(site)).replace('.', ',')} kN/m²`} />
-          <Stat label={estimate.sizing.truss ? 'Pojas rešetke' : 'Krovni nosač'} value={`${Math.round((estimate.sizing.truss ? estimate.sizing.chord.use : estimate.sizing.rafter.use) * 100)}% iskorišćen`} />
+          <Stat label="Težina krova" value={`${estimate.sizing.loads.g.toFixed(2).replace('.', ',')} kN/m²`} />
         </div>
+        <ul className="space-y-1 text-xs">
+          {estimate.sizing.members.map((member) => {
+            const used = Math.round(member.check.use * 100)
+            return (
+              <li key={member.id} className="flex items-center gap-2">
+                <span className="w-24 shrink-0 text-stone-600">{member.name}</span>
+                <span className="h-1.5 flex-1 overflow-hidden rounded bg-stone-200">
+                  <span className={`block h-full ${used > 100 ? 'bg-red-500' : used > 85 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, used)}%` }} />
+                </span>
+                <span className={`w-10 shrink-0 text-right tabular-nums ${used > 100 ? 'font-semibold text-red-700' : 'text-stone-700'}`}>{used}%</span>
+              </li>
+            )
+          })}
+        </ul>
         <Hint>
           Presek nosača prati sneg i raspon: {estimate.profiles.rafter.name} preko {estimate.sizing.span.toFixed(2).replace('.', ',')} m. Vrednosti su okvirne; merodavan je proračun statičara po
           SRPS EN 1991.
-          {!estimate.sizing.ok && ' Ni najjači profil ne nosi ovaj sneg na ovom rasponu, pa se cena više ne menja: uključi rešetkasti nosač ili smanji raspon.'}
+          {estimate.sizing.outOfRange
+            ? ' Ovoliki sneg je izvan opsega računice: konstrukciju određuje statičar.'
+            : !estimate.sizing.ok && ' Neki deo konstrukcije ni u najjačem profilu ne nosi ovaj sneg, pa se cena više ne menja. Vidi upozorenja u predmeru.'}
         </Hint>
       </Section>
 
@@ -473,13 +490,15 @@ function ShapeTab({ scene, estimate, billing, onDimensionChange, onSceneChange, 
         {roof.kind === 'duo' && (
           <Segmented label="Slemen" value={roof.ridge} options={ROOF_RIDGES} onChange={(ridge) => onRoofChange({ ridge })} />
         )}
-        <Toggle
-          label="Rešetkasti nosač"
-          detail="Za veće raspone: lakši i jači od pune kutije, stoji na 2 m."
-          checked={Boolean(roof.truss)}
-          onChange={(truss) => onRoofChange({ truss })}
-        />
-        {!estimate.sizing.ok && !roof.truss && (
+        {!estimate.sizing.framed && (
+          <Toggle
+            label="Rešetkasti nosač"
+            detail="Za veće raspone: lakši i jači od pune kutije, stoji na 2 m."
+            checked={Boolean(roof.truss)}
+            onChange={(truss) => onRoofChange({ truss })}
+          />
+        )}
+        {!estimate.sizing.mainOk && !estimate.sizing.outOfRange && !estimate.sizing.truss && (
           <p className="flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">
             <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
             Raspon je prevelik za kutijasti nosač. Uključi rešetku.
@@ -502,7 +521,91 @@ function ShapeTab({ scene, estimate, billing, onDimensionChange, onSceneChange, 
         />
         {roof.kind !== 'flat' && <Hint>Visina je do niže strehe. Slemen i viši zid idu iznad toga, po nagibu.</Hint>}
       </Section>
+
+      <SystemSection scene={scene} estimate={estimate} catalog={catalog} onSceneChange={onSceneChange} />
     </div>
+  )
+}
+
+// Izbor sistema konstrukcije. Za svaki sistem se računa isti objekat, pa kartica
+// pokazuje kilograme čelika i da li prolazi grubu proveru.
+function SystemSection({ scene, estimate, catalog = [], onSceneChange }) {
+  const structure = scene.structure ?? DEFAULT_STRUCTURE
+  const span = Math.min(scene.dimensions.width, scene.dimensions.length)
+  const options = useMemo(
+    () =>
+      SYSTEMS.map((system) => {
+        const variant = system.id === structure.system ? estimate : buildEstimate({ ...scene, structure: { ...structure, system: system.id } })
+        return { system, kg: steelKg(variant), cost: structureCost(variant, catalog), ok: variant.sizing.ok, mismatch: systemMismatch(system, span) }
+      }),
+    [scene, structure, estimate, catalog, span],
+  )
+  const passing = options.filter((option) => option.ok && !option.mismatch)
+  // Preporuka ide po ceni konstrukcije; bez cenika po kilogramima.
+  const measure = (option) => option.cost || option.kg
+  const best = passing.length ? passing.reduce((a, b) => (measure(b) < measure(a) ? b : a)).system.id : null
+  const current = systemOf(structure)
+  const limits = SYSTEMS.find((system) => system.frameSpacing).frameSpacing
+  const setStructure = (part) => onSceneChange({ structure: { ...structure, ...part } })
+
+  return (
+    <Section icon={Ruler} title="Sistem konstrukcije">
+      <div className="grid gap-2">
+        {options.map(({ system, kg, cost, ok, mismatch }) => {
+          const active = system.id === current.id
+          return (
+            <button
+              key={system.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setStructure({ system: system.id })}
+              className={`rounded-lg border px-3 py-2 text-left transition ${active ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-800 hover:border-stone-400'} ${mismatch && !active ? 'opacity-60' : ''}`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold">{system.name}</span>
+                {best === system.id && <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${active ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>Preporučeno</span>}
+              </span>
+              <span className={`mt-1 block text-xs ${active ? 'text-stone-300' : 'text-stone-500'}`}>{system.pitch}</span>
+              <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                {cost > 0 && <span className="font-semibold tabular-nums">{formatDin(cost)}</span>}
+                <span className="tabular-nums">≈ {Math.round(kg).toLocaleString('sr-RS')} kg čelika</span>
+                <span>{Math.round(kg / (scene.dimensions.width * scene.dimensions.length))} kg/m²</span>
+                <span className={ok ? (active ? 'text-emerald-300' : 'text-emerald-700') : active ? 'text-amber-300' : 'text-amber-700'}>{ok ? 'prolazi proveru' : 'ne prolazi proveru'}</span>
+              </span>
+              {mismatch && <span className={`mt-1 block text-xs ${active ? 'text-amber-200' : 'text-amber-700'}`}>{mismatch}</span>}
+            </button>
+          )
+        })}
+      </div>
+      {current.frameSpacing && (
+        <Slider
+          label="Razmak okvira"
+          value={structure.frameSpacing}
+          min={limits.min}
+          max={limits.max}
+          step={limits.step}
+          formatValue={(value) => `${String(value).replace('.', ',')} m`}
+          onChange={(frameSpacing) => setStructure({ frameSpacing })}
+        />
+      )}
+      <Hint>
+        Cena i kilogrami su za ovaj objekat i ovu lokaciju: profili, zaštita i projekat, po ceniku, bez izrade i montaže. Najjeftiniji sistem koji prolazi proveru dobija oznaku „Preporučeno”. Konačan izbor i preseke potvrđuje statičar.
+      </Hint>
+      <Segmented
+        label="Zaštita od korozije"
+        value={protectionOf(structure).id}
+        options={PROTECTIONS.map((entry) => ({ id: entry.id, name: entry.name }))}
+        onChange={(protection) => setStructure({ protection })}
+        columns={3}
+      />
+      <Hint>{protectionOf(structure).detail}</Hint>
+      <Toggle
+        label="Projekat konstrukcije"
+        detail="Statičar proverava i potpisuje konstrukciju i daje crteže za izradu. Treba za rešenje iz člana 145 i za dozvolu."
+        checked={Boolean(structure.engineering)}
+        onChange={(engineering) => setStructure({ engineering })}
+      />
+    </Section>
   )
 }
 

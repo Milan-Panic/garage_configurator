@@ -763,6 +763,7 @@ function Configurator({ boot }) {
             estimate={estimate}
             quote={quote}
             total={total}
+            catalog={catalog}
             onDimensionChange={updateDimension}
             onSceneChange={updateScene}
             onElectricChange={updateElectric}

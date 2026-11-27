@@ -162,6 +162,7 @@ export function GarageCanvas({
           pedestrianDoors={pedestrianDoors}
           canopy={canopy}
           site={scene?.site}
+          structure={scene?.structure}
           xray={xray}
           hideRoof={openTop}
         />

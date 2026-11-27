@@ -16,6 +16,7 @@ import { formatDin, orientationQuote, quoteItems, quoteTotal } from '../prices'
 import { roofGeometry } from '../roof'
 import { roomKind } from '../rooms'
 import { WIND_OPTIONS, placeName } from '../site'
+import { protectionOf, systemOf } from '../systems'
 
 const SHOTS = [
   { id: 'hero', label: 'Objekat u dvorištu, pogled spreda', setting: 'yard', theta: 0.62, phi: 1.3, zoom: 0.82 },
@@ -99,6 +100,8 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
     ['Visina do slemena', `${num(dimensions.height + rise)} m`],
     ['Površina osnove', `${num(footprint)} m²`],
     ['Krov', roof.kind === 'flat' ? 'ravan' : `${roof.kind === 'mono' ? 'jedna voda' : 'dve vode'}, nagib ${roof.pitch}°`],
+    ['Sistem konstrukcije', `${systemOf(scene.structure).name}${sizing.framed ? `, okviri na ${num(sizing.frameSpacing)} m` : ''}`],
+    ['Zaštita čelika', `${protectionOf(scene.structure).name}${scene.structure?.engineering ? ', sa projektom konstrukcije' : ''}`],
     ['Krovni nosač', `${estimate.profiles.rafter.name}${sizing.truss ? ' (rešetka)' : ''}`],
     ['Glavna vrata', scene.door.style === 'none' ? 'nema' : scene.door.style === 'opening' ? `otvor bez krila, ${num(scene.door.width)} × ${num(scene.door.height)} m` : `${num(scene.door.width)} × ${num(scene.door.height)} m`],
     ['Prozori i bočna vrata', `${scene.windows.length * units} prozora, ${(scene.pedestrianDoors || []).length * units} vrata`],
@@ -125,22 +128,30 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
   }
   const check = [
     ['Sneg na krovu', `${num(sizing.snow)} kN/m²`, `${placeName(scene.site)}, ${scene.site?.altitude ?? 117} m n.v.`],
-    ['Sopstvena težina krova', `${num(sizing.areaLoad - sizing.snow)} kN/m²`, 'pokrivač, rožnjače, nosači i eventualni paneli'],
+    ['Sopstvena težina krova', `${num(sizing.loads.g)} kN/m²`, 'pokrivač, rožnjače, nosači i eventualni paneli'],
+    ['Vetar', `${num(sizing.wind)} kN/m²`, wind.name.toLowerCase()],
     ['Razmak nosača', `${num(sizing.spacing)} m`, sizing.truss ? 'rešetke' : 'kutijasti nosači'],
-    ['Opterećenje nosača', `${num(sizing.load)} kN/m`, 'površinsko opterećenje × razmak'],
+    ['Opterećenje nosača', `${num(sizing.load)} kN/m`, `sa faktorima ${num(sizing.designLoad)} kN/m (1,35 g + 1,5 s)`],
     ['Raspon', `${num(sizing.span)} m`, 'između oslonaca'],
-    ['Moment savijanja', `${num(member.moment)} kNm`, 'q · L² / 8, prosta greda'],
+    ['Moment savijanja', `${num(member.moment)} kNm`, 'sa faktorima, q · L² / 8'],
     ...(sizing.truss
       ? [
           ['Visina rešetke', `${num(sizing.chord.depth)} m`, ''],
-          ['Sila u pojasu', `${num(sizing.chord.force, 1)} kN`, 'moment / visina rešetke'],
-          ['Napon u pojasu', `${Math.round(sizing.chord.stress)} MPa`, 'dozvoljeno 96 MPa zbog izvijanja'],
+          ['Sila u pojasu', `${num(sizing.chord.force, 1)} kN`, scene.roof.kind === 'duo' ? 'reakcija / sin nagiba, uz oslonac' : 'moment / visina rešetke'],
+          ['Polje pojasa', `${num(sizing.chord.panel)} m`, `izvijanje χ = ${num(sizing.chord.chi)}`],
+          ['Napon u pojasu', `${Math.round(sizing.chord.stress)} MPa`, `sila sa izvijanjem ${Math.round(sizing.chord.axial)} + savijanje ${Math.round(sizing.chord.flexural)}, granica 235 MPa`],
         ]
       : [
-          ['Napon u nosaču', `${Math.round(sizing.rafter.stress)} MPa`, 'dozvoljeno 160 MPa'],
+          ['Napon u nosaču', `${Math.round(sizing.rafter.stress)} MPa`, 'granica 235 MPa (S235)'],
           ['Ugib', `${Math.round(sizing.rafter.sag)} mm`, `dozvoljeno ${Math.round(sizing.rafter.allowed)} mm (L/200)`],
         ]),
     ['Izabran presek', member.profile.name, `iskorišćen ${Math.round(member.use * 100)}%`],
+    ['Venac', sizing.plate.profile.name, `polje ${num(sizing.plate.span)} m, iskorišćen ${Math.round(sizing.plate.use * 100)}%`],
+    ...(sizing.purlin ? [['Rožnjače', sizing.purlin.profile.name, `raspon ${num(sizing.purlin.span)} m${sizing.purlin.uplift ? ', merodavan vetar odozdo' : ''}, iskorišćene ${Math.round(sizing.purlin.use * 100)}%`]] : []),
+    ['Stubovi', sizing.post.profile.name, `visina ${num(sizing.post.height)} m, krov i vetar sa izvijanjem, iskorišćeni ${Math.round(sizing.post.use * 100)}%`],
+    ['Rigle', sizing.girt.profile.name, `raspon ${num(sizing.girt.span)} m, vetar, iskorišćene ${Math.round(sizing.girt.use * 100)}%`],
+    ...(sizing.brace ? [['Dijagonale u zidu', sizing.brace.profile.name, `sila ${num(sizing.brace.force, 1)} kN, iskorišćene ${Math.round(sizing.brace.use * 100)}%`]] : []),
+    ['Ankeri', `${num(sizing.anchor.force, 1)} kN po stubu`, `odizanje od vetra, okvirna nosivost ${num(sizing.anchor.capacity)} kN`],
   ]
 
   return (
@@ -260,9 +271,9 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
         </table>
         <p className={`mt-3 rounded-lg px-3 py-2 text-sm ${sizing.ok ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-950'}`}>
           {sizing.ok
-            ? 'Izabrani presek zadovoljava ovu grubu proveru na napon i ugib.'
-            : 'Izabrani presek ne zadovoljava ovu grubu proveru. Konstrukciju mora da odredi statičar.'}{' '}
-          Provera je prosta greda pod ravnomernim opterećenjem i ne zamenjuje statički proračun po SRPS EN 1991 i 1993.
+            ? 'Izabrani preseci nosača, venca, rožnjača, stubova, rigli i dijagonala zadovoljavaju ovu grubu proveru.'
+            : 'Neki presek ne zadovoljava ovu grubu proveru ili je sneg izvan opsega računice. Konstrukciju mora da odredi statičar.'}{' '}
+          Provera je pojednostavljena (proste grede, pojas sa izvijanjem) i ne zamenjuje statički proračun po SRPS EN 1991 i 1993.
         </p>
       </Page>
 

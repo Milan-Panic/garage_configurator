@@ -92,6 +92,7 @@ export function GarageView({
           pedestrianDoors={pedestrianDoors}
           canopy={canopy}
           site={scene?.site}
+          structure={scene?.structure}
           hideRoof={hideRoof}
         />
         {pedestrianDoors.map((item) => (

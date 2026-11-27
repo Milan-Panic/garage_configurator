@@ -3,7 +3,10 @@
 import { FLOOR_LEVEL } from './config'
 import { wallFrame } from './layout'
 import { roofGeometry } from './roof'
-import { snowLoad, windPressure } from './site'
+import { snowOutOfRange } from './site'
+import { columnCombinations, siteLoads } from './loads'
+import { systemOf } from './systems'
+import { BEAM_PROFILES, BRACE_PROFILES, POST_PROFILES, RAFTER_PROFILES, checkBeam, checkBeamMoment, checkChord, checkColumn, checkTie, from } from './checks'
 
 export const POST_SPACING = 2
 export const RAFTER_SPACING = 1.2
@@ -14,32 +17,14 @@ export const GIRT_SPACING = 1.2
 export const RAFTER_SPAN_LIMIT = 6
 export const TRUSS_SPAN_LIMIT = 12
 
+// Dva hemijska ankera M12 u betonu C25/30, okvirna nosivost na čupanje sa faktorima.
+const ANCHOR_CAPACITY = 16
+
 const WALLS = ['front', 'back', 'left', 'right']
 const INSET = 0.05
 const JAMB = 0.05
 const MERGE = 0.3
 const MIN_BRACE_BAY = 0.9
-const STEEL_E = 210000
-const STRESS_LIMIT = 160
-const DEAD_LOAD = 0.25
-const SOLAR_LOAD = 0.15
-
-// Kutijasti profili za rogove: I u cm⁴ i W u cm³ oko jače ose.
-const RAFTER_PROFILES = [
-  { name: 'kutija 80×40×2', priceId: 'box-80x40x2', inertia: 39, modulus: 9.7 },
-  { name: 'kutija 80×40×3', priceId: 'box-80x40x3', inertia: 55.9, modulus: 14 },
-  { name: 'kutija 100×50×3', priceId: 'box-100x50x3', inertia: 112, modulus: 22.4 },
-  { name: 'kutija 120×60×4', priceId: 'box-120x60x4', inertia: 255, modulus: 42.5 },
-  { name: 'kutija 140×80×4', priceId: 'box-140x80x4', inertia: 449, modulus: 64.2 },
-]
-
-// Pojasevi rešetke: površina preseka u cm².
-const CHORD_PROFILES = [
-  { name: 'kutija 60×40×2', priceId: 'box-60x40x2', area: 3.74 },
-  { name: 'kutija 80×40×3', priceId: 'box-80x40x3', area: 6.61 },
-  { name: 'kutija 80×80×3', priceId: 'post-80x80x3', area: 9.01 },
-  { name: 'kutija 100×100×3', priceId: 'post-100x100x3', area: 11.4 },
-]
 
 export function wallLength(id, dimensions) {
   return id === 'front' || id === 'back' ? dimensions.width : dimensions.length
@@ -62,12 +47,12 @@ export function openingsByWall(scene) {
 
 // Stubovi jednog zida po osi zida: uglovi, dovratnici uz vrata i međustubovi.
 // Međustub koji bi pao u prozor pomera se uz ivicu prozora.
-function wallMarks(id, dimensions, roof, openings) {
+function wallMarks(id, dimensions, roof, openings, spacing = POST_SPACING) {
   const length = wallLength(id, dimensions)
   const end = length / 2 - INSET
   const acrossRidge = id === 'front' || id === 'back' ? roof.ridge === 'length' : roof.ridge === 'width'
   const gable = roof.kind === 'duo' && acrossRidge
-  const bays = Math.max(1, Math.ceil(length / POST_SPACING - 1e-9))
+  const bays = Math.max(1, Math.ceil(length / spacing - 1e-9))
   const spots = []
   for (let index = 1; index < bays; index += 1) spots.push(-length / 2 + (length * index) / bays)
   if (gable && !spots.some((spot) => Math.abs(spot) < 0.12 * length)) spots.push(0)
@@ -95,6 +80,17 @@ function wallMarks(id, dimensions, roof, openings) {
     kept.push(mark)
   })
   return kept.sort((left, right) => left.u - right.u)
+}
+
+// Zidovi na koje naležu krovni nosači, isto pravilo kao u rasporedu krova ispod:
+// dve vode naležu na zidove uz sleme, ostali krovovi preko kraćeg raspona.
+function bearingWalls(geometry) {
+  const plane = geometry.planes[0]
+  if (!plane) return ['left', 'right']
+  const [c0, c1, , c3] = plane.corners
+  const slopeX = Math.abs(c0.y - c1.y) > 0.01
+  const alongX = geometry.roof.kind === 'duo' ? slopeX : Math.abs(c1.x - c0.x) <= Math.abs(c3.z - c0.z)
+  return alongX ? ['left', 'right'] : ['front', 'back']
 }
 
 function bracedBays(marks, openings, length, extra) {
@@ -129,30 +125,45 @@ function subtractIntervals(a, b, holes) {
   return parts
 }
 
-// Gruba provera roga kao proste grede: napon do 160 MPa i ugib do L/200.
-function sizeRafter(span, load) {
-  const moment = (load * span * span) / 8
-  const checks = RAFTER_PROFILES.map((profile) => {
-    const stress = (moment * 1000) / profile.modulus
-    const sag = (5 * load * (span * 1000) ** 4) / (384 * STEEL_E * profile.inertia * 1e4)
-    const allowed = (span * 1000) / 200
-    return { profile, stress, sag, allowed, use: Math.max(stress / STRESS_LIMIT, sag / allowed) }
+// Najveći moment u vencu jednog zida. Nosači naležu na venac tamo gde im je kraj uz
+// zid; nosač iznad stuba ne savija venac. Vraća najgore polje i njegov moment.
+function plateBending(wall, length, marks, rafters, overhang, line, spacing) {
+  const hits = []
+  rafters.forEach((rafter) => {
+    ;[rafter.a, rafter.b].forEach((point) => {
+      const dx = point[0] - wall.origin[0]
+      const dz = point[2] - wall.origin[2]
+      const u = dx * wall.axis[0] + dz * wall.axis[2]
+      const off = Math.abs(dx * wall.axis[2] - dz * wall.axis[0])
+      if (off < overhang + 0.3 && Math.abs(u) <= length / 2 + 0.01 && !hits.some((other) => Math.abs(other - u) < 0.05)) hits.push(u)
+    })
   })
-  const fit = checks.find((entry) => entry.use <= 1) ?? checks[checks.length - 1]
-  return { ...fit, moment, ok: fit.use <= 1 }
+  hits.sort((left, right) => left - right)
+  const gap = hits.length > 1 ? (hits[hits.length - 1] - hits[0]) / (hits.length - 1) : spacing
+  const force = line * gap
+  let worst = { moment: 0, span: POST_SPACING }
+  for (let index = 0; index < marks.length - 1; index += 1) {
+    const a = marks[index].u
+    const span = marks[index + 1].u - a
+    const loads = hits.filter((u) => u > a + 0.1 && u < a + span - 0.1).map((u) => u - a)
+    const left = loads.reduce((sum, x) => sum + (force * (span - x)) / span, 0)
+    loads.forEach((x) => {
+      const moment = left * x - loads.filter((other) => other < x).reduce((sum, other) => sum + force * (x - other), 0)
+      if (moment > worst.moment) worst = { moment, span }
+    })
+  }
+  return worst
 }
 
-// Rešetka: sila u pojasu je moment podeljen visinom rešetke.
-function sizeTruss(span, load, depth) {
+// Rešetka. Kod paralelnih pojaseva sila je moment podeljen visinom. Kod dve vode
+// najveća sila je uz oslonac: reakcija podeljena sinusom nagiba.
+function sizeTruss({ span, load, depth, duo, panel, brace, bending = load }) {
   const moment = (load * span * span) / 8
-  const force = moment / depth
-  const checks = CHORD_PROFILES.map((profile) => {
-    // Pritisnut pojas se izvija, pa mu se dozvoljeni napon uzima sa 60%.
-    const stress = (force * 10) / profile.area
-    return { profile, stress, use: stress / (STRESS_LIMIT * 0.6) }
-  })
-  const fit = checks.find((entry) => entry.use <= 1) ?? checks[checks.length - 1]
-  return { ...fit, moment, force, depth, ok: fit.use <= 1 }
+  const reaction = (load * span) / 2
+  const slope = Math.hypot(span / 2, depth)
+  const force = duo ? Math.max(moment / depth, reaction / (depth / slope)) : moment / depth
+  const chord = checkChord(force, panel, bending, brace)
+  return { ...chord, bendingMoment: chord.moment, moment, force, depth, reaction }
 }
 
 export function structureFrame(scene) {
@@ -160,11 +171,18 @@ export function structureFrame(scene) {
   const { width, length, height } = dimensions
   const geometry = roofGeometry(dimensions, scene.roof)
   const roof = geometry.roof
-  const truss = Boolean(scene.roof?.truss)
+  // Sistem: garažni skelet ima stubove na 2 m, a okviri stub i rešetku na 3–5 m.
+  const system = systemOf(scene.structure)
+  const framed = system.family === 'frames'
+  const frameSpacing = framed ? (scene.structure?.frameSpacing ?? system.frameSpacing.default) : TRUSS_SPACING
+  const truss = framed || Boolean(scene.roof?.truss)
+  const purlinMax = framed ? system.purlinMax : PURLIN_SPACING
+  const loadBearing = bearingWalls(geometry)
   const openings = openingsByWall(scene)
   const under = (x, z) => geometry.underside(x, z)
-  const wind = windPressure(scene.site)
-  const snow = snowLoad(scene.site)
+  const loads = siteLoads(scene)
+  const wind = loads.wind
+  const snow = loads.snow
 
   const posts = []
   const seen = new Set()
@@ -173,6 +191,7 @@ export function structureFrame(scene) {
   const headers = []
   const unbraced = []
   const girtRows = Math.max(1, Math.ceil(height / GIRT_SPACING) - 1)
+  const marksByWall = {}
 
   WALLS.forEach((id) => {
     const wall = wallFrame(id, dimensions)
@@ -186,7 +205,8 @@ export function structureFrame(scene) {
       const [x, z] = at(u)
       return [x, y, z]
     }
-    const marks = wallMarks(id, dimensions, roof, openings[id])
+    const marks = wallMarks(id, dimensions, roof, openings[id], framed && loadBearing.includes(id) ? frameSpacing : POST_SPACING)
+    marksByWall[id] = marks
 
     marks.forEach((mark) => {
       const [x, z] = at(mark.u)
@@ -243,11 +263,16 @@ export function structureFrame(scene) {
   const chords = []
   const webs = []
   const pitched = roof.kind !== 'flat'
-  const spacing = truss ? TRUSS_SPACING : RAFTER_SPACING
+  const spacing = framed ? frameSpacing : truss ? TRUSS_SPACING : RAFTER_SPACING
+  // Okviri kod dve vode: rožnjače idu u čvorove rešetke, `nodes` polja po vodi.
+  let nodes = 0
   let rafterSpan = 0
   // Zidovi na koje se oslanjaju rogovi.
   let bearing = []
   let trussDepth = 0
+  // Najveći razmak rožnjača po kosini i najduže polje gornjeg pojasa rešetke.
+  let purlinGap = 0
+  let trussPanel = 0
   geometry.planes.forEach((plane) => {
     const [c0, c1, c2, c3] = plane.corners
     const extentX = Math.abs(c1.x - c0.x)
@@ -276,9 +301,26 @@ export function structureFrame(scene) {
     const clear = roof.kind === 'duo' ? run - geometry.overhang : run - geometry.overhang * 2
     rafterSpan = Math.max(rafterSpan, clear)
 
-    if (battens) {
+    if (battens && framed && roof.kind === 'duo') {
+      // Rožnjače u čvorovima: od zida do slemena na jednakim poljima, mereno od strehe.
       const slopeLength = distance(lines[0].a, lines[0].b)
-      const rows = Math.ceil(slopeLength / PURLIN_SPACING) + 1
+      const clearRun = run - geometry.overhang
+      nodes = Math.max(2, Math.ceil((slopeLength * clearRun) / run / purlinMax))
+      purlinGap = Math.max(purlinGap, (slopeLength * clearRun) / run / nodes)
+      const eaveFirst = alongX ? c0.y < c1.y : c0.y < c3.y
+      for (let row = 0; row <= nodes; row += 1) {
+        const fromEave = (geometry.overhang + (row / nodes) * clearRun) / run
+        const s = Math.min(0.995, eaveFirst ? fromEave : 1 - fromEave)
+        const a = alongX ? mix(c0, c1, s) : mix(c0, c3, s)
+        const b = alongX ? mix(c3, c2, s) : mix(c1, c2, s)
+        a[1] -= 0.03
+        b[1] -= 0.03
+        purlins.push({ a, b })
+      }
+    } else if (battens) {
+      const slopeLength = distance(lines[0].a, lines[0].b)
+      const rows = Math.ceil(slopeLength / purlinMax) + 1
+      purlinGap = Math.max(purlinGap, (slopeLength * 0.94) / (rows - 1))
       for (let row = 0; row < rows; row += 1) {
         const s = 0.03 + (row / (rows - 1)) * 0.94
         const a = alongX ? mix(c0, c1, s) : mix(c0, c3, s)
@@ -298,6 +340,7 @@ export function structureFrame(scene) {
         const start = mix(line.a, line.b, inset)
         const end = mix(line.a, line.b, 1 - inset)
         const panels = Math.max(4, Math.round(distance(start, end) / (depth * 1.3) / 2) * 2)
+        trussPanel = Math.max(trussPanel, distance(start, end) / panels)
         const top = (index) => mix(start, end, index / panels)
         const bottom = (index) => {
           const node = top(index)
@@ -330,13 +373,26 @@ export function structureFrame(scene) {
     const level = geometry.y0 - 0.1
     const peak = under(0, 0) - 0.12
     trussDepth = Math.max(0.2, peak - level)
+    // Ispuna ide u četvrtine raspona, pa pojas ima dva polja po vodi; bez ispune jedno.
+    // Okviri imaju čvor ispod svake rožnjače.
+    const slopeHalf = Math.hypot(half, peak - level)
+    const panelsPerSide = framed && nodes ? nodes : 2
+    trussPanel = peak - level > 0.25 ? slopeHalf / panelsPerSide : slopeHalf
     const place = (across, y, offset) => (alongLength ? [across, y, offset] : [offset, y, across])
     for (let index = 0; index < count; index += 1) {
       const offset = -perp / 2 + INSET + ((perp - INSET * 2) * index) / (count - 1)
       ties.push({ a: place(-half, level, offset), b: place(half, level, offset) })
       const tall = peak - level > 0.25
       if (tall && (truss || half * 2 > 4)) kings.push({ a: place(0, level, offset), b: place(0, peak, offset) })
-      if (truss && tall) {
+      if (truss && tall && framed && nodes) {
+        // Pratt ispuna: uspravnica ispod svakog čvora i dijagonala ka sredini.
+        ;[-1, 1].forEach((side) => {
+          const acrossAt = (k) => side * half * (1 - k / nodes)
+          const topAt = (k) => (alongLength ? under(acrossAt(k), offset) : under(offset, acrossAt(k))) - 0.12
+          for (let k = 1; k < nodes; k += 1) webs.push({ a: place(acrossAt(k), level, offset), b: place(acrossAt(k), topAt(k), offset) })
+          for (let k = 0; k < nodes; k += 1) webs.push({ a: place(acrossAt(k), topAt(k), offset), b: place(acrossAt(k + 1), level, offset) })
+        })
+      } else if (truss && tall) {
         ;[-1, 1].forEach((side) => {
           const across = (side * half) / 2
           const top = alongLength ? under(across, offset) : under(offset, across)
@@ -347,23 +403,129 @@ export function structureFrame(scene) {
     }
   }
 
-  // Opterećenje po dužnom metru nosača i izbor preseka.
-  const area = DEAD_LOAD + snow + ((scene.electric?.solar || 0) > 0 ? SOLAR_LOAD : 0)
-  const load = area * spacing
+  // Opterećenje po dužnom metru nosača i izbor preseka. `load` je bez faktora (za
+  // prikaz i ugib), `designLoad` sa faktorima 1,35 i 1,5 (za napon).
+  const load = loads.roofService * spacing
+  const designLoad = loads.roofDesign * spacing
   const fullSpan = roof.kind === 'duo' ? rafterSpan * 2 : rafterSpan
-  const rafter = sizeRafter(rafterSpan, load)
-  const chord = truss ? sizeTruss(fullSpan, load, Math.max(0.2, trussDepth)) : null
+  const rafter = checkBeam(rafterSpan, designLoad, load, RAFTER_PROFILES)
+  const chord = truss
+    ? sizeTruss({ span: fullSpan, load: designLoad, depth: Math.max(0.2, trussDepth), duo: roof.kind === 'duo', panel: Math.max(trussPanel, 0.3), brace: purlinGap || PURLIN_SPACING, bending: framed && nodes ? 0 : designLoad })
+    : null
+
+  // Venac na zidu na koji naležu nosači je greda između stubova. Svaki nosač koji
+  // ne stoji iznad stuba savija venac silom koju donosi sa svog dela krova.
+  const across = fullSpan / 2 + geometry.overhang
+  const plateDemand = bearing.reduce((worst, id) => {
+    const bay = plateBending(wallFrame(id, dimensions), wallLength(id, dimensions), marksByWall[id] || [], rafters, geometry.overhang, across, spacing)
+    return bay.moment > worst.moment ? bay : worst
+  }, { moment: 0, span: POST_SPACING })
+  const plate = checkBeamMoment(plateDemand.span, plateDemand.moment * loads.roofDesign, plateDemand.moment * loads.roofService, from(BEAM_PROFILES, width > 6.5 || truss ? 'kutija 80×40×2' : 'kutija 60×40×2'))
+
+  // Rožnjača je greda preko razmaka nosača i nosi traku krova širine razmaka rožnjača.
+  // Odozgo je pritiska sneg, odozdo je diže vetar; kutija nosi isto u oba smera.
+  const gap = purlinGap || PURLIN_SPACING
+  const purlin = purlins.length
+    ? {
+        // Kod okvira rožnjača ide u komadu preko bar dva polja, pa radi kao kontinualna greda.
+        ...checkBeam(spacing, Math.max(loads.roofDesign, loads.upliftDesign) * gap, loads.roofService * gap, from(BEAM_PROFILES, truss ? 'kutija 60×40×2' : 'kutija 40×40×2'), {
+          continuous: framed && rafters.length / Math.max(1, geometry.planes.length) >= 3,
+        }),
+        uplift: loads.upliftDesign > loads.roofDesign,
+      }
+    : null
+
+  // Stubovi: svaki nosi svoj deo krova (samo na zidovima na koje naležu nosači) i
+  // vetar sa svog dela zida. Merodavan je najgori stub.
+  const combos = columnCombinations(loads)
+  const columns = WALLS.flatMap((id) => {
+    const marks = marksByWall[id] || []
+    const wall = wallFrame(id, dimensions)
+    const roofWidth = bearing.includes(id) ? across : 0
+    return marks.map((mark, index) => {
+      const before = index > 0 ? mark.u - marks[index - 1].u : 0
+      const after = index < marks.length - 1 ? marks[index + 1].u - mark.u : 0
+      const along = (before + after) / 2
+      const x = wall.origin[0] + wall.axis[0] * mark.u
+      const z = wall.origin[2] + wall.axis[2] * mark.u
+      const tall = under(x, z) - FLOOR_LEVEL
+      return checkColumn(tall, combos.map((combo) => ({ label: combo.label, force: combo.roof * along * roofWidth, wall: combo.wall * along })))
+    })
+  })
+  // Svi stubovi dobijaju isti presek, pa se uzima najjači koji je bilo kom stubu trebao.
+  const rank = (entry) => POST_PROFILES.indexOf(entry.profile) + Math.min(entry.use, 2) / 10
+  const strongest = columns.reduce((worst, entry) => (rank(entry) > rank(worst) ? entry : worst))
+
+  // Rigle nose vetar između stubova, svaka svoju traku zida.
+  const girtBand = height / (girtRows + 1)
+  const girtSpan = girts.reduce((widest, girt) => Math.max(widest, distance(girt.a, girt.b)), 0)
+  const girt = checkBeam(Math.max(girtSpan, 0.5), loads.wallDesign * girtBand, loads.wallService * girtBand, BEAM_PROFILES)
+
+  // Dijagonale u zidu primaju vetar sa zabata: polovina sile na svaki od dva zida
+  // paralelna vetru, podeljena na dijagonale tog zida.
+  const wallBraces = braces.filter((brace) => brace.kind === 'zid')
+  const endArea = (id) => {
+    const wall = wallFrame(id, dimensions)
+    const span = wallLength(id, dimensions)
+    let sum = 0
+    for (let step = 0; step <= 8; step += 1) {
+      const u = -span / 2 + (span * step) / 8
+      sum += under(wall.origin[0] + wall.axis[0] * u, wall.origin[2] + wall.axis[2] * u) - FLOOR_LEVEL
+    }
+    return (sum / 9) * span
+  }
+  const braceForce = wallBraces.reduce((worst, brace) => {
+    const facing = brace.wall === 'left' || brace.wall === 'right' ? 'front' : 'left'
+    const count = wallBraces.filter((other) => other.wall === brace.wall).length
+    const horizontal = (loads.bracingDesign * endArea(facing)) / 2 / count
+    const run = Math.hypot(brace.b[0] - brace.a[0], brace.b[2] - brace.a[2])
+    const force = horizontal / Math.max(0.2, run / distance(brace.a, brace.b))
+    return Math.max(worst, force)
+  }, 0)
+  const brace = checkTie(braceForce, BRACE_PROFILES)
+
+  // Ankeri: vetar diže krov, a sopstvena težina ga drži. Sila po stubu, sa faktorima.
+  const footprint = (width + geometry.overhang * 2) * (length + geometry.overhang * 2)
+  const anchor = { force: (loads.anchorUplift * footprint) / Math.max(1, posts.length), capacity: ANCHOR_CAPACITY }
+  anchor.ok = anchor.force <= anchor.capacity
+  anchor.use = anchor.force / anchor.capacity
+
+  const outOfRange = snowOutOfRange(scene.site)
+  const main = truss ? chord.ok && fullSpan <= TRUSS_SPAN_LIMIT : rafter.ok && rafterSpan <= RAFTER_SPAN_LIMIT
+  const members = [
+    { id: 'main', name: truss ? 'Pojas rešetke' : 'Krovni nosač', check: truss ? chord : rafter },
+    { id: 'plate', name: 'Venac', check: plate },
+    ...(purlin ? [{ id: 'purlin', name: 'Rožnjače', check: purlin }] : []),
+    { id: 'post', name: 'Stubovi', check: strongest },
+    { id: 'girt', name: 'Rigle', check: girt },
+    ...(wallBraces.length ? [{ id: 'brace', name: 'Dijagonale', check: brace }] : []),
+    { id: 'anchor', name: 'Ankeri', check: anchor },
+  ]
   const sizing = {
+    system: system.id,
+    framed,
+    frameSpacing: framed ? frameSpacing : null,
     truss,
     snow,
     wind,
+    loads,
     spacing,
     load,
-    areaLoad: area,
+    designLoad,
+    areaLoad: loads.roofService,
     span: truss ? fullSpan : rafterSpan,
     rafter,
     chord,
-    ok: truss ? chord.ok && fullSpan <= TRUSS_SPAN_LIMIT : rafter.ok && rafterSpan <= RAFTER_SPAN_LIMIT,
+    plate,
+    purlin,
+    post: strongest,
+    girt,
+    brace: wallBraces.length ? brace : null,
+    anchor,
+    members,
+    outOfRange,
+    mainOk: main,
+    ok: main && members.every((member) => member.check.ok) && !outOfRange,
   }
 
   return { posts, plates, rafters, purlins, girts, braces, ties, kings, chords, webs, headers, unbraced, rafterSpan, girtRows, pitched, bearing, truss, trussDepth, sizing }
@@ -373,22 +535,15 @@ export function structurePosts(dimensions, roof, door, pedestrianDoors = [], win
   return structureFrame({ dimensions, roof, door, pedestrianDoors, windows }).posts
 }
 
-// Preseci su uobičajeni za lake montažne objekte i provereni samo grubo.
-// Ovo nije statički proračun.
+// Preseci iz grube provere u structureFrame. Ovo nije statički proračun.
 export function profileSet(dimensions, frame) {
   const span = dimensions.width
-  const wind = frame.sizing.wind
-  const post =
-    span > 6.5 || dimensions.height > 3.2 || (wind >= 0.9 && dimensions.height > 2.7)
-      ? { name: 'kutija 100×100×3', priceId: 'post-100x100x3' }
-      : span > 4.5 || dimensions.height > 2.7 || wind >= 0.9
-        ? { name: 'kutija 80×80×3', priceId: 'post-80x80x3' }
-        : { name: 'kutija 80×80×2', priceId: 'post-80x80x2' }
+  const post = frame.sizing.post.profile
   const rafter = frame.truss ? frame.sizing.chord.profile : frame.sizing.rafter.profile
-  const purlin = frame.truss ? { name: 'kutija 60×40×2', priceId: 'box-60x40x2' } : { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
-  const plate = span > 6.5 || frame.truss ? { name: 'kutija 80×40×2', priceId: 'box-80x40x2' } : { name: 'kutija 60×40×2', priceId: 'box-60x40x2' }
-  const girt = { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
-  const brace = { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
+  const purlin = frame.sizing.purlin?.profile ?? (frame.truss ? { name: 'kutija 60×40×2', priceId: 'box-60x40x2' } : { name: 'kutija 40×40×2', priceId: 'box-40x40x2' })
+  const plate = frame.sizing.plate.profile
+  const girt = frame.sizing.girt.profile
+  const brace = frame.sizing.brace?.profile ?? { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
   const web = { name: 'kutija 40×40×2', priceId: 'box-40x40x2' }
   const tie = frame.truss ? frame.sizing.chord.profile : { name: 'kutija 60×40×2', priceId: 'box-60x40x2' }
   const header = span > 4.5 ? { name: 'kutija 80×40×3', priceId: 'box-80x40x3' } : { name: 'kutija 80×40×2', priceId: 'box-80x40x2' }
