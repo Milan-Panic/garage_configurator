@@ -1,3 +1,6 @@
+// Preseci ramova (IPE/HEA, C/Z, cevi). Sa ekstenzijom, jer ovaj fajl čita i server.
+import { FRAME_SECTIONS } from './checks.js'
+
 // Paketi su celine koje jedna firma nudi komplet, da kupac ne skuplja lim i šrafove sa više strana.
 export const PACKAGES = [
   { id: 'konstrukcija', name: 'Konstrukcija', detail: 'Profili, ankeri i spojni materijal' },
@@ -38,6 +41,11 @@ const CATALOG = [
   { id: 'paint-kg', group: 'Metalna konstrukcija', name: 'Zaštita bojom, 2 sloja, po kg čelika', unit: 'kg', price: 40 },
   { id: 'hdg-kg', group: 'Metalna konstrukcija', name: 'Vruće cinkovanje, po kg čelika', unit: 'kg', price: 95 },
   { id: 'duplex-kg', group: 'Metalna konstrukcija', name: 'Cink i boja (dupleks), po kg čelika', unit: 'kg', price: 135 },
+  { id: 'fab-skelet-kg', group: 'Metalna konstrukcija', name: 'Izrada i montaža: garažni skelet, po kg', unit: 'kg', price: 100 },
+  { id: 'fab-radionica-kg', group: 'Metalna konstrukcija', name: 'Izrada i montaža: okviri sa rešetkama, po kg', unit: 'kg', price: 110 },
+  { id: 'fab-cz-kg', group: 'Metalna konstrukcija', name: 'Izrada i montaža: pocinkovani C/Z ram, po kg', unit: 'kg', price: 70 },
+  { id: 'fab-hala-kg', group: 'Metalna konstrukcija', name: 'Izrada i montaža: hala IPE/HEA, po kg', unit: 'kg', price: 90 },
+  { id: 'fab-kit-kg', group: 'Metalna konstrukcija', name: 'Montaža: ekonomik kit, po kg', unit: 'kg', price: 50 },
   { id: 'engineering-m2', group: 'Projekat', name: 'Projekat konstrukcije sa statičkim proračunom', unit: 'm²', price: 350 },
   { id: 'screw', group: 'Metalna konstrukcija', name: 'Samorez 4,8×35', unit: 'kom', price: 4 },
   { id: 'anchor', group: 'Metalna konstrukcija', name: 'Anker za stub', unit: 'kom', price: 85 },
@@ -115,7 +123,18 @@ const CATALOG = [
   { id: 'wc-set', group: 'Dodaci', name: 'Sanitarni komplet za WC', unit: 'kompl', price: 32000 },
 ]
 
-export const DEFAULT_PRICES = CATALOG.map((item) => ({ ...item, pack: GROUP_PACKAGE[item.group] }))
+// Cena po metru preseka ramova iz mase: vruće valjano oko 150 din/kg, fabrički
+// pocinkovani C/Z oko 210 din/kg, pocinkovane cevi oko 230 din/kg. Procena.
+const RATE = { rolled: 150, formed: 210, tube: 230 }
+const FRAME_ITEMS = FRAME_SECTIONS.map((section) => ({
+  id: section.priceId,
+  group: 'Metalna konstrukcija',
+  name: section.kind === 'formed' ? `${section.name.replace(/^2×/, '')} pocinkovan` : section.kind === 'tube' ? `Pocinkovana ${section.name}` : section.name,
+  unit: 'm',
+  price: Math.round(((section.kg / (section.pieces || 1)) * RATE[section.kind]) / 10) * 10,
+}))
+
+export const DEFAULT_PRICES = [...CATALOG, ...FRAME_ITEMS].map((item) => ({ ...item, pack: GROUP_PACKAGE[item.group] }))
 
 export function packageName(id) {
   return PACKAGES.find((entry) => entry.id === id)?.name ?? id

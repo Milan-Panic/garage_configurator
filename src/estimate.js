@@ -7,7 +7,7 @@ import { FLOOR_FINISHES, FRAME_COLORS, ROOF_MATERIALS, WALL_MATERIALS, findMater
 import { roofGeometry, roofMetrics } from './roof'
 import { roomBlocksOpening, roomBox, roomKind } from './rooms'
 import { placeName, snowSource } from './site'
-import { DEFAULT_STRUCTURE, ENGINEERING_MIN_AREA, profileKg, protectionOf } from './systems'
+import { DEFAULT_STRUCTURE, ENGINEERING_MIN_AREA, profileKg, protectionOf, systemOf } from './systems'
 import { wallSheets } from './sheets'
 import { skylightLayout } from './skylights'
 import { POST_SPACING, TRUSS_SPAN_LIMIT, profileSet, segmentLength, structureFrame } from './structure'
@@ -43,10 +43,19 @@ export function buildEstimate(scene) {
     const angle = 90 - angleBetween(segment, reference(segment))
     return [angle, angle]
   })
+  // Dupli C je dva komada istog profila, pa se seče dvaput.
+  const twice = (profile, list) => (profile.pieces > 1 ? list.flatMap((entry) => [entry, entry]) : list)
   // Stub je dole ravan, a gore prati nagib krova.
-  pushCuts(lines, 'Konstrukcija', `Stubovi, ${section.name}`, frame.posts.map((post) => post.height), section.priceId, frame.posts.map(() => [0, pitch]))
+  const mainPosts = sizing.gablePost ? frame.posts.filter((post) => post.frameColumn) : frame.posts
+  pushCuts(lines, 'Konstrukcija', `${sizing.portal ? 'Stubovi ramova' : 'Stubovi'}, ${section.name}`, twice(section, mainPosts.map((post) => post.height)), section.priceId, twice(section, mainPosts.map(() => [0, pitch])))
+  if (sizing.gablePost) {
+    const gable = sizing.gablePost.profile
+    const gablePosts = frame.posts.filter((post) => !post.frameColumn)
+    pushCuts(lines, 'Konstrukcija', `Zabatni stubovi i dovratnici, ${gable.name}`, twice(gable, gablePosts.map((post) => post.height)), gable.priceId, twice(gable, gablePosts.map(() => [0, pitch])))
+    if (!sizing.gablePost.ok) warnings.push(`Zabatni stub ${gable.name} ne nosi vetar na visini od ${fmt(sizing.gablePost.height)} m (${Math.round(sizing.gablePost.use * 100)}%). Treba ga zameniti stubom rama ili dodati stub između.`)
+  }
   notes.push(
-    `${sizing.framed ? `Sistem sa okvirima: na zidovima na koje naležu rešetke stub stoji samo ispod svakog okvira, na najviše ${fmt(sizing.frameSpacing)} m, a na zabatima na najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m.` : `Stubovi idu na uglove i na svakih najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m.`} Uz vrata stoje dovratnici, a stub koji bi pao u prozor pomeren je uz njegovu ivicu. Presek stuba je izabran po krovu koji nosi i vetru na zidu, sa izvijanjem: ${section.name}, iskorišćen ${Math.round(sizing.post.use * 100)}% (merodavan ${sizing.post.label === 'vetar' ? 'vetar' : 'sneg'}). Ovo nije statički proračun.`,
+    `${sizing.portal ? `Portalni ramovi stoje na ${fmt(sizing.frameSpacing)} m, i na zabatima, pa krajnji ram može da primi produženje objekta.` : sizing.framed ? `Sistem sa okvirima: na zidovima na koje naležu rešetke stub stoji samo ispod svakog okvira, na najviše ${fmt(sizing.frameSpacing)} m, a na zabatima na najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m.` : `Stubovi idu na uglove i na svakih najviše ${POST_SPACING.toFixed(1).replace('.', ',')} m.`} Uz vrata stoje dovratnici, a stub koji bi pao u prozor pomeren je uz njegovu ivicu. Presek stuba je izabran po krovu koji nosi i vetru na zidu, sa izvijanjem: ${section.name}, iskorišćen ${Math.round(sizing.post.use * 100)}% (merodavan ${sizing.post.label === 'vetar' ? 'vetar' : 'sneg'}). Ovo nije statički proračun.`,
   )
 
   const plates = plateLengths(dimensions, metrics)
@@ -60,7 +69,16 @@ export function buildEstimate(scene) {
     pushCuts(lines, 'Konstrukcija', `Nadvratnici, ${profiles.header.name}`, lengthsOf(frame.headers), profiles.header.priceId)
   }
 
-  if (frame.truss) {
+  if (sizing.portal) {
+    const rafterProfile = profiles.rafter
+    pushCuts(lines, 'Konstrukcija', `Rogovi ramova, ${rafterProfile.name}`, twice(rafterProfile, lengthsOf(frame.rafters)), rafterProfile.priceId, twice(rafterProfile, plumb(frame.rafters)))
+    if (sizing.haunch) pushCuts(lines, 'Konstrukcija', `Vute u uglovima ramova, ${rafterProfile.name}`, twice(rafterProfile, Array(sizing.haunch.count).fill(sizing.haunch.length)), rafterProfile.priceId)
+    pushCuts(lines, 'Konstrukcija', `Rožnjače, ${profiles.purlin.name}`, lengthsOf(frame.purlins), profiles.purlin.priceId)
+    const corner = sizing.portalFrame
+    notes.push(
+      `Stub i rog su kruto spojeni u uglu, pa ram nema zategu ni rešetku i prostor je slobodan do krova. Moment u uglu je oko ${fmt(corner.rafter.corner)} kNm; ${rafterProfile.name} je iskorišćen ${Math.round(corner.rafter.use * 100)}%, a stub ${profiles.post.name} ${Math.round(corner.column.use * 100)}% (sa izvijanjem rama koji se ljulja). Rožnjače ${profiles.purlin.name} su na najviše ${fmt(sizing.purlinMax)} m.`,
+    )
+  } else if (frame.truss) {
     const bottom = frame.chords.length ? frame.chords : frame.ties
     const fill = [...frame.webs, ...frame.kings]
     // Ispuna naleže na pojas: kod paralelnih pojaseva na gornji, kod dve vode na zategu.
@@ -117,7 +135,9 @@ export function buildEstimate(scene) {
     warnings.push(`Sneg od ${fmt(sizing.snow)} kN/m² je preko onoga što ova računica pokriva. Za ovu lokaciju konstrukciju mora da odredi statičar, a cena konstrukcije je samo gruba.`)
   } else if (!sizing.mainOk) {
     warnings.push(
-      frame.truss
+      sizing.portal
+        ? `Ram premošćuje ${fmt(sizing.span)} m pod snegom od ${fmt(sizing.snow)} kN/m², a ni najjači par roga i stuba iz kataloga ne prolazi (${Math.round(sizing.portalFrame.use * 100)}%). Smanji razmak ramova ili izaberi jači sistem.`
+        : frame.truss
         ? `Rešetka premošćuje ${fmt(sizing.span)} m pod snegom od ${fmt(sizing.snow)} kN/m², a gornji pojas je i u najjačem profilu iskorišćen ${used}% ili je raspon preko ${TRUSS_SPAN_LIMIT} m. Konstrukciju mora da odredi statičar.`
         : `Krovni nosač premošćuje ${fmt(sizing.span)} m pod snegom od ${fmt(sizing.snow)} kN/m², a najjači kutijasti profil je iskorišćen ${used}%. Uključi rešetkasti nosač u delu Objekat, pod Krov.`,
     )
@@ -133,7 +153,7 @@ export function buildEstimate(scene) {
   if (!sizing.girt.ok) warnings.push(`Rigle preko ${fmt(sizing.girt.span)} m ne nose vetar ni u profilu ${profiles.girt.name}. Široki otvori traže ram oko otvora, koji određuje statičar.`)
   if (sizing.brace && !sizing.brace.ok) warnings.push(`Dijagonale u zidu primaju ${fmt(sizing.brace.force)} kN od vetra, više nego što ${profiles.brace.name} nosi. Treba više polja sa dijagonalom ili statičar.`)
   if (sizing.anchor.force > 0) {
-    const text = `Vetar diže krov: svaki stub vuče sidro silom do oko ${fmt(sizing.anchor.force)} kN (sa faktorima), a dva hemijska ankera M12 nose okvirno ${fmt(sizing.anchor.capacity)} kN.`
+    const text = `Vetar diže krov: svaki stub vuče sidro silom do oko ${fmt(sizing.anchor.force)} kN (sa faktorima), a ${sizing.anchor.label} nose okvirno ${fmt(sizing.anchor.capacity)} kN.`
     if (sizing.anchor.ok) notes.push(`${text} Ankeri se ugrađuju u ploču od bar 15 cm, ne u estrih.`)
     else warnings.push(`${text} To nije dovoljno: treba jači ankeri ili temelj ispod stubova, po proračunu statičara.`)
   }
@@ -184,12 +204,18 @@ function pushProtection(lines, notes, warnings, scene, sizing) {
   const structure = scene.structure ?? DEFAULT_STRUCTURE
   const kg = profileKg(lines.filter((entry) => entry.section === 'Konstrukcija'))
   const protection = protectionOf(structure)
-  if (kg > 0) {
+  const system = systemOf(structure)
+  if (kg > 0 && protection.priceId) {
     lines.push(line('Konstrukcija', protection.item, Math.round(kg), 'kg', `oko ${Math.round(kg)} kg profila`, { priceId: protection.priceId }))
   }
   if (protection.id === 'paint') notes.push('Konstrukcija je zaštićena bojom. Ogrebotine posle montaže treba odmah popraviti, a boju obnavljati na 5–10 godina.')
+  else if (protection.id === 'factory') notes.push('Profili su fabrički pocinkovani (Z275) i ne treba ih farbati. Na gradilištu se ne vare; rupe se buše pre cinkovanja ili se ivice posle bušenja premažu cink-sprejem.')
   else notes.push(`${protection.name}: delovi se cinkuju u radionici posle varenja, pa se na gradilištu spajaju zavrtnjima. Rešetke se cinkuju u komadu, ako staju u kadu cinkare.`)
-  if (protection.id !== 'paint' && sizing.span > 12) warnings.push('Rešetka duža od 12 m možda ne staje u kadu cinkare. Proveri dužinu kade ili podeli rešetku na dva dela sa spojem na zavrtnje.')
+  if ((protection.id === 'hdg' || protection.id === 'duplex') && sizing.span > 12) warnings.push('Nosač duži od 12 m možda ne staje u kadu cinkare. Proveri dužinu kade ili podeli nosač na dva dela sa spojem na zavrtnje.')
+  if (kg > 0 && structure.fabrication) {
+    lines.push(line('Konstrukcija', `Izrada i montaža konstrukcije (${system.name})`, Math.round(kg), 'kg', `oko ${Math.round(kg)} kg profila`, { priceId: system.fabricationId }))
+    notes.push('Izrada i montaža konstrukcije računa se po kilogramu čelika, a cena zavisi od sistema: zavarene rešetke traže najviše rada, a pocinkovani sistem na zavrtnje najmanje. Uključeni su spojna sredstva, transport i montaža, ne i autodizalica za hale.')
+  }
 
   const area = scene.dimensions.width * scene.dimensions.length * (scene.units || 1)
   if (structure.engineering) {
