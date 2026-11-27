@@ -81,6 +81,7 @@ export function UnitCopies({ scene, xray = false, hideRoof = false }) {
             gutters={scene.gutters !== false}
             pedestrianDoors={scene.pedestrianDoors || []}
             site={scene.site}
+            structure={scene.structure}
             xray={xray}
             hideRoof={hideRoof}
           />

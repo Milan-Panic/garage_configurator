@@ -6,6 +6,7 @@ import { normalizeRooms } from './rooms'
 import { BUILDING_TYPES, DEFAULT_CANOPY, DEFAULT_ELECTRIC, VENTILATION_OPTIONS, normalizeCanopy, normalizeElectric, normalizeUnits } from './buildings'
 import { DEFAULT_SITE, normalizeSite } from './site'
 import { DEFAULT_SKYLIGHTS, normalizeSkylights } from './skylights'
+import { DEFAULT_STRUCTURE, normalizeStructure } from './systems'
 
 const DOOR_STYLES = ['none', 'opening', 'sectional', 'tilt', 'single', 'double', 'roller']
 // Stilovi bez krila: nema materijala vrata, motora ni otvorenosti.
@@ -39,6 +40,7 @@ export const initialScene = {
   site: DEFAULT_SITE,
   skylights: DEFAULT_SKYLIGHTS,
   units: 1,
+  structure: DEFAULT_STRUCTURE,
 }
 
 export function scenesEqual(left, right) {
@@ -170,6 +172,7 @@ export function normalizeScene(raw) {
     site: normalizeSite(source.site),
     skylights: normalizeSkylights(source.skylights),
     units: normalizeUnits(source.units),
+    structure: normalizeStructure(source.structure),
   }
 }
 

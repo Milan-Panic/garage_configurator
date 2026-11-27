@@ -29,6 +29,7 @@ export function Garage({
   pedestrianDoors = [],
   canopy = null,
   site = null,
+  structure = null,
   xray = false,
   hideRoof = false,
 }) {
@@ -58,7 +59,7 @@ export function Garage({
       )}
       {!hideRoof && <Roof dimensions={dimensions} roof={roof} wallMaterial={wallMaterial} roofMaterial={roofMaterial} gutters={gutters} ghost={xray} />}
       {canopy?.enabled && <Canopy canopy={canopy} dimensions={dimensions} material={roofMaterial} wallMaterial={wallMaterial} />}
-      {xray && <Structure dimensions={dimensions} roof={roof} door={door} pedestrianDoors={pedestrianDoors} windows={windows} site={site} />}
+      {xray && <Structure dimensions={dimensions} roof={roof} door={door} pedestrianDoors={pedestrianDoors} windows={windows} site={site} structure={structure} />}
     </group>
   )
 }
@@ -107,10 +108,10 @@ function Wall({ id, dimensions, material, windows, pedestrians = [], door, doorM
 }
 
 // Čelični skelet iz računice: isti model koji estimate.js broji.
-function Structure({ dimensions, roof, door, pedestrianDoors, windows, site }) {
+function Structure({ dimensions, roof, door, pedestrianDoors, windows, site, structure }) {
   const frame = useMemo(
-    () => structureFrame({ dimensions, roof, door, pedestrianDoors, windows, site }),
-    [dimensions, roof, door, pedestrianDoors, windows, site],
+    () => structureFrame({ dimensions, roof, door, pedestrianDoors, windows, site, structure }),
+    [dimensions, roof, door, pedestrianDoors, windows, site, structure],
   )
   const lines = (segments, thickness, tone = STEEL) =>
     segments.map((segment, index) => <Bar key={index} from={segment.a} to={segment.b} thickness={thickness} {...tone} />)

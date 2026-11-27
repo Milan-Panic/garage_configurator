@@ -10,6 +10,7 @@ export const PACKAGES = [
 
 const GROUP_PACKAGE = {
   'Metalna konstrukcija': 'konstrukcija',
+  Projekat: 'konstrukcija',
   'Zidna obloga': 'omotac',
   Izolacija: 'omotac',
   Krov: 'omotac',
@@ -26,6 +27,7 @@ const CATALOG = [
   { id: 'post-80x80x2', group: 'Metalna konstrukcija', name: 'Kutija 80×80×2', unit: 'm', price: 980 },
   { id: 'post-80x80x3', group: 'Metalna konstrukcija', name: 'Kutija 80×80×3', unit: 'm', price: 1350 },
   { id: 'post-100x100x3', group: 'Metalna konstrukcija', name: 'Kutija 100×100×3', unit: 'm', price: 1750 },
+  { id: 'post-120x120x4', group: 'Metalna konstrukcija', name: 'Kutija 120×120×4', unit: 'm', price: 2800 },
   { id: 'box-140x80x4', group: 'Metalna konstrukcija', name: 'Kutija 140×80×4', unit: 'm', price: 3000 },
   { id: 'box-120x60x4', group: 'Metalna konstrukcija', name: 'Kutija 120×60×4', unit: 'm', price: 2250 },
   { id: 'box-100x50x3', group: 'Metalna konstrukcija', name: 'Kutija 100×50×3', unit: 'm', price: 1500 },
@@ -33,6 +35,10 @@ const CATALOG = [
   { id: 'box-80x40x2', group: 'Metalna konstrukcija', name: 'Kutija 80×40×2', unit: 'm', price: 820 },
   { id: 'box-60x40x2', group: 'Metalna konstrukcija', name: 'Kutija 60×40×2', unit: 'm', price: 690 },
   { id: 'box-40x40x2', group: 'Metalna konstrukcija', name: 'Kutija 40×40×2', unit: 'm', price: 480 },
+  { id: 'paint-kg', group: 'Metalna konstrukcija', name: 'Zaštita bojom, 2 sloja, po kg čelika', unit: 'kg', price: 40 },
+  { id: 'hdg-kg', group: 'Metalna konstrukcija', name: 'Vruće cinkovanje, po kg čelika', unit: 'kg', price: 95 },
+  { id: 'duplex-kg', group: 'Metalna konstrukcija', name: 'Cink i boja (dupleks), po kg čelika', unit: 'kg', price: 135 },
+  { id: 'engineering-m2', group: 'Projekat', name: 'Projekat konstrukcije sa statičkim proračunom', unit: 'm²', price: 350 },
   { id: 'screw', group: 'Metalna konstrukcija', name: 'Samorez 4,8×35', unit: 'kom', price: 4 },
   { id: 'anchor', group: 'Metalna konstrukcija', name: 'Anker za stub', unit: 'kom', price: 85 },
   { id: 'trapez-t18-m2', group: 'Zidna obloga', name: 'Trapezni lim T18', unit: 'm²', price: 1650 },
