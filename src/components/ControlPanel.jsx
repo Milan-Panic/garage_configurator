@@ -538,7 +538,7 @@ function SystemSection({ scene, catalog = [], partners = [], onSceneChange }) {
       SYSTEMS.map((system) => {
         const variant = buildEstimate({ ...scene, structure: { ...(system.id === structure.system ? structure : switchSystem(structure, system.id)), fabrication: true } })
         const firms = partners.filter((partner) => Number(partner.prices?.[system.fabricationId]) > 0).length
-        return { system, kg: steelKg(variant), cost: structureCost(variant, catalog), ok: variant.sizing.ok, mismatch: systemMismatch(system, span), firms }
+        return { system, kg: steelKg(variant), cost: structureCost(variant, catalog), ok: variant.sizing.ok, mismatch: systemMismatch(system, span, scene.dimensions.height), firms }
       }),
     [scene, structure, catalog, partners, span],
   )
