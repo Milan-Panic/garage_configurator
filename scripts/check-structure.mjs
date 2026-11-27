@@ -27,6 +27,10 @@ const cases = [
   ['Radionica 8×10, hala 5 m', { width: 8, length: 10, height: 3.5 }, { kind: 'duo', pitch: 15, ridge: 'length' }, { system: 'hala', frameSpacing: 5 }],
   ['Magacin 12×20, C/Z 5 m', { width: 12, length: 20, height: 4.5 }, { kind: 'duo', pitch: 12, ridge: 'length' }, { system: 'cz', frameSpacing: 5 }],
   ['Magacin 12×20, hala 6 m', { width: 12, length: 20, height: 4.5 }, { kind: 'duo', pitch: 12, ridge: 'length' }, { system: 'hala', frameSpacing: 6 }],
+  ['Hala 16×30, hala 6 m', { width: 16, length: 30, height: 4.5 }, { kind: 'duo', pitch: 10, ridge: 'length' }, { system: 'hala', frameSpacing: 6 }],
+  ['Hala 20×40, hala 6 m', { width: 20, length: 40, height: 4.5 }, { kind: 'duo', pitch: 10, ridge: 'length' }, { system: 'hala', frameSpacing: 6 }],
+  ['Hala 20×40, hala 5 m', { width: 20, length: 40, height: 4.5 }, { kind: 'duo', pitch: 10, ridge: 'length' }, { system: 'hala', frameSpacing: 5 }],
+  ['Hala 20×30, jednovodni', { width: 20, length: 30, height: 4.5 }, { kind: 'mono', pitch: 6 }, { system: 'hala', frameSpacing: 6 }],
 ]
 const sites = [
   { place: 'beograd', altitude: 117, wind: 'open' },
