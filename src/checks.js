@@ -36,7 +36,7 @@ export const RAFTER_PROFILES = ['80x40x2', '80x40x3', '100x50x3', '120x60x4', '1
 export const CHORD_PROFILES = ['60x40x2', '80x40x3', '100x50x3', '80x80x3', '100x100x3', '120x60x4', '140x80x4'].map((id) => BOXES[id])
 export const BEAM_PROFILES = ['40x40x2', '60x40x2', '80x40x2', '80x40x3', '100x50x3', '120x60x4', '140x80x4'].map((id) => BOXES[id])
 export const POST_PROFILES = ['80x80x2', '80x80x3', '100x100x3', '120x120x4'].map((id) => BOXES[id])
-export const BRACE_PROFILES = ['40x40x2', '60x40x2', '80x40x2'].map((id) => BOXES[id])
+export const BRACE_PROFILES = ['40x40x2', '60x40x2', '80x40x2', '80x40x3', '100x50x3', '120x60x4'].map((id) => BOXES[id])
 
 export function from(catalog, name) {
   const index = catalog.findIndex((profile) => profile.name === name)
@@ -164,6 +164,12 @@ export const IPE = [
   rolled('IPE 270', 'ipe', 45.9, 5790, 429, 11.2, 3.02, 36.1),
   rolled('IPE 300', 'ipe', 53.8, 8356, 557, 12.5, 3.35, 42.2),
   rolled('IPE 330', 'ipe', 62.6, 11770, 713, 13.7, 3.55, 49.1),
+  rolled('IPE 360', 'ipe', 72.7, 16270, 904, 14.95, 3.79, 57.1),
+  rolled('IPE 400', 'ipe', 84.5, 23130, 1160, 16.55, 3.95, 66.3),
+  rolled('IPE 450', 'ipe', 98.8, 33740, 1500, 18.48, 4.12, 77.6),
+  rolled('IPE 500', 'ipe', 116, 48200, 1930, 20.43, 4.31, 90.7),
+  rolled('IPE 550', 'ipe', 134, 67120, 2440, 22.35, 4.45, 106),
+  rolled('IPE 600', 'ipe', 156, 92080, 3070, 24.3, 4.66, 122),
 ]
 export const HEA = [
   rolled('HEA 140', 'hea', 31.4, 1033, 155, 5.73, 3.52, 24.7),
@@ -172,6 +178,13 @@ export const HEA = [
   rolled('HEA 200', 'hea', 53.8, 3692, 389, 8.28, 4.98, 42.3),
   rolled('HEA 220', 'hea', 64.3, 5410, 515, 9.17, 5.51, 50.5),
   rolled('HEA 240', 'hea', 76.8, 7763, 675, 10.1, 6.0, 60.3),
+  rolled('HEA 260', 'hea', 86.8, 10450, 836, 10.97, 6.5, 68.2),
+  rolled('HEA 280', 'hea', 97.3, 13670, 1010, 11.86, 7.0, 76.4),
+  rolled('HEA 300', 'hea', 112.5, 18260, 1260, 12.74, 7.49, 88.3),
+  rolled('HEA 320', 'hea', 124.4, 22930, 1480, 13.58, 7.49, 97.6),
+  rolled('HEA 340', 'hea', 133.5, 27690, 1680, 14.4, 7.46, 105),
+  rolled('HEA 360', 'hea', 142.8, 33090, 1890, 15.22, 7.43, 112),
+  rolled('HEA 400', 'hea', 159, 45070, 2310, 16.84, 7.34, 125),
 ]
 
 // Hladno oblikovani C ili Z sa povijenim ivicama: visina h, pojas b, ivica c, debljina t (mm).

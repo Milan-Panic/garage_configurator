@@ -163,7 +163,12 @@ export function buildEstimate(scene) {
   )
 
   if (dimensions.width > LIGHT_STRUCTURE.width || dimensions.length > LIGHT_STRUCTURE.length || dimensions.height > LIGHT_STRUCTURE.height) {
-    warnings.push(`Preseci u računici važe do ${LIGHT_STRUCTURE.width} × ${LIGHT_STRUCTURE.length} m i visine ${String(LIGHT_STRUCTURE.height).replace('.', ',')} m. Za ove mere statičar mora da odredi konstrukciju, pa je cena konstrukcije samo gruba.`)
+    // Portalni ramovi se proveravaju za ceo raspon sistema, ali objekat te veličine i dalje traži projekat.
+    warnings.push(
+      systemOf(scene.structure).family === 'portal'
+        ? 'Ramovi su grubo provereni za ove mere, ali objekat ove veličine mora da ima projekat konstrukcije sa statičkim proračunom. Do projekta je cena konstrukcije procena.'
+        : `Preseci u računici važe do ${LIGHT_STRUCTURE.width} × ${LIGHT_STRUCTURE.length} m i visine ${String(LIGHT_STRUCTURE.height).replace('.', ',')} m. Za ove mere statičar mora da odredi konstrukciju, pa je cena konstrukcije samo gruba.`,
+    )
   }
 
   pushProtection(lines, notes, warnings, scene, sizing)
