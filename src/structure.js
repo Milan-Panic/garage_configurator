@@ -5,8 +5,8 @@ import { wallFrame } from './layout'
 import { roofGeometry } from './roof'
 import { snowOutOfRange } from './site'
 import { columnCombinations, siteLoads } from './loads'
-import { systemOf } from './systems'
-import { BEAM_PROFILES, BRACE_PROFILES, POST_PROFILES, RAFTER_PROFILES, checkBeam, checkBeamMoment, checkChord, checkColumn, checkTie, from } from './checks'
+import { frameSpacingOf, systemOf } from './systems'
+import { BEAM_PROFILES, BRACE_PROFILES, POST_PROFILES, RAFTER_PROFILES, checkBeam, checkBeamMoment, checkChord, checkColumn, checkPortal, checkTie, from, HAUNCH_RATIO } from './checks'
 
 export const POST_SPACING = 2
 export const RAFTER_SPACING = 1.2
@@ -171,11 +171,14 @@ export function structureFrame(scene) {
   const { width, length, height } = dimensions
   const geometry = roofGeometry(dimensions, scene.roof)
   const roof = geometry.roof
-  // Sistem: garažni skelet ima stubove na 2 m, a okviri stub i rešetku na 3–5 m.
+  // Sistem: garažni skelet ima stubove na 2 m, okviri stub i rešetku na 3–5 m, a
+  // portalni ram stub i rog kruto spojene, bez zatega i rešetke.
   const system = systemOf(scene.structure)
-  const framed = system.family === 'frames'
-  const frameSpacing = framed ? (scene.structure?.frameSpacing ?? system.frameSpacing.default) : TRUSS_SPACING
-  const truss = framed || Boolean(scene.roof?.truss)
+  const portal = system.family === 'portal'
+  const trussFrames = system.family === 'frames'
+  const framed = trussFrames || portal
+  const frameSpacing = framed ? frameSpacingOf(scene.structure) : TRUSS_SPACING
+  const truss = trussFrames || (!portal && Boolean(scene.roof?.truss))
   const purlinMax = framed ? system.purlinMax : PURLIN_SPACING
   const loadBearing = bearingWalls(geometry)
   const openings = openingsByWall(scene)
@@ -205,7 +208,8 @@ export function structureFrame(scene) {
       const [x, z] = at(u)
       return [x, y, z]
     }
-    const marks = wallMarks(id, dimensions, roof, openings[id], framed && loadBearing.includes(id) ? frameSpacing : POST_SPACING)
+    // Portalni ram ima isti ram i na zabatu, pa i tamo stubove na razmaku ramova.
+    const marks = wallMarks(id, dimensions, roof, openings[id], portal || (framed && loadBearing.includes(id)) ? frameSpacing : POST_SPACING)
     marksByWall[id] = marks
 
     marks.forEach((mark) => {
@@ -281,7 +285,7 @@ export function structureFrame(scene) {
     // kraćeg raspona, pa kod pada po dužini sami nose lim, bez rožnjača.
     const slopeX = Math.abs(c0.y - c1.y) > 0.01
     const alongX = roof.kind === 'duo' ? slopeX : extentX <= extentZ
-    const battens = truss || (pitched && alongX === slopeX)
+    const battens = truss || portal || (pitched && alongX === slopeX)
     bearing = alongX ? ['left', 'right'] : ['front', 'back']
     const perp = alongX ? extentZ : extentX
     const run = alongX ? extentX : extentZ
@@ -301,7 +305,7 @@ export function structureFrame(scene) {
     const clear = roof.kind === 'duo' ? run - geometry.overhang : run - geometry.overhang * 2
     rafterSpan = Math.max(rafterSpan, clear)
 
-    if (battens && framed && roof.kind === 'duo') {
+    if (battens && trussFrames && roof.kind === 'duo') {
       // Rožnjače u čvorovima: od zida do slemena na jednakim poljima, mereno od strehe.
       const slopeLength = distance(lines[0].a, lines[0].b)
       const clearRun = run - geometry.overhang
@@ -364,8 +368,9 @@ export function structureFrame(scene) {
     })
   })
 
-  // Dvovodni krov: zatega u visini venca pravi od para rogova vezač.
-  if (roof.kind === 'duo') {
+  // Dvovodni krov: zatega u visini venca pravi od para rogova vezač. Portalni ram
+  // nema zategu, jer kruti ugao prima potisak.
+  if (roof.kind === 'duo' && !portal) {
     const alongLength = roof.ridge === 'length'
     const perp = alongLength ? length : width
     const half = (alongLength ? width : length) / 2 - INSET
@@ -409,6 +414,11 @@ export function structureFrame(scene) {
   const designLoad = loads.roofDesign * spacing
   const fullSpan = roof.kind === 'duo' ? rafterSpan * 2 : rafterSpan
   const rafter = checkBeam(rafterSpan, designLoad, load, RAFTER_PROFILES)
+  const combos = columnCombinations(loads)
+  // Portalni ram: rog i stub se biraju zajedno, jer kruti ugao deli moment između njih.
+  const portalFrame = portal
+    ? checkPortal({ span: fullSpan, height, spacing, design: designLoad, service: load, combos, rafters: system.catalogs.rafter, columns: system.catalogs.column, haunch: Boolean(system.haunch) })
+    : null
   const chord = truss
     ? sizeTruss({ span: fullSpan, load: designLoad, depth: Math.max(0.2, trussDepth), duo: roof.kind === 'duo', panel: Math.max(trussPanel, 0.3), brace: purlinGap || PURLIN_SPACING, bending: framed && nodes ? 0 : designLoad })
     : null
@@ -428,7 +438,7 @@ export function structureFrame(scene) {
   const purlin = purlins.length
     ? {
         // Kod okvira rožnjača ide u komadu preko bar dva polja, pa radi kao kontinualna greda.
-        ...checkBeam(spacing, Math.max(loads.roofDesign, loads.upliftDesign) * gap, loads.roofService * gap, from(BEAM_PROFILES, truss ? 'kutija 60×40×2' : 'kutija 40×40×2'), {
+        ...checkBeam(spacing, Math.max(loads.roofDesign, loads.upliftDesign) * gap, loads.roofService * gap, system.catalogs?.purlin ?? from(BEAM_PROFILES, truss ? 'kutija 60×40×2' : 'kutija 40×40×2'), {
           continuous: framed && rafters.length / Math.max(1, geometry.planes.length) >= 3,
         }),
         uplift: loads.upliftDesign > loads.roofDesign,
@@ -437,7 +447,6 @@ export function structureFrame(scene) {
 
   // Stubovi: svaki nosi svoj deo krova (samo na zidovima na koje naležu nosači) i
   // vetar sa svog dela zida. Merodavan je najgori stub.
-  const combos = columnCombinations(loads)
   const columns = WALLS.flatMap((id) => {
     const marks = marksByWall[id] || []
     const wall = wallFrame(id, dimensions)
@@ -454,12 +463,36 @@ export function structureFrame(scene) {
   })
   // Svi stubovi dobijaju isti presek, pa se uzima najjači koji je bilo kom stubu trebao.
   const rank = (entry) => POST_PROFILES.indexOf(entry.profile) + Math.min(entry.use, 2) / 10
-  const strongest = columns.reduce((worst, entry) => (rank(entry) > rank(worst) ? entry : worst))
+  const strongest = portal ? portalFrame.column : columns.reduce((worst, entry) => (rank(entry) > rank(worst) ? entry : worst))
+
+  // Portalni ram: stubovi na uglovima i na zidovima na koje naležu rogovi su stubovi
+  // rama. Zabatni stubovi i dovratnici nose samo vetar i pola polja krova do prvog
+  // rama, pa dobijaju lakši presek iz istog kataloga.
+  posts.forEach((post) => {
+    post.frameColumn = !portal || post.role === 'ugao' || loadBearing.includes(post.wall)
+  })
+  const gableChecks = portal
+    ? WALLS.filter((id) => !loadBearing.includes(id)).flatMap((id) => {
+        const marks = marksByWall[id] || []
+        const wall = wallFrame(id, dimensions)
+        return marks
+          .map((mark, index) => ({ mark, index }))
+          .filter(({ mark }) => mark.role !== 'ugao')
+          .map(({ mark, index }) => {
+            const along = ((index > 0 ? mark.u - marks[index - 1].u : 0) + (index < marks.length - 1 ? marks[index + 1].u - mark.u : 0)) / 2
+            const tall = under(wall.origin[0] + wall.axis[0] * mark.u, wall.origin[2] + wall.axis[2] * mark.u) - FLOOR_LEVEL
+            const catalog = system.catalogs.column
+            return checkColumn(tall, combos.map((combo) => ({ label: combo.label, force: (combo.roof * along * frameSpacing) / 2, wall: combo.wall * along })), catalog)
+          })
+      })
+    : []
+  const gableRank = (entry) => (system.catalogs?.column ?? []).indexOf(entry.profile) + Math.min(entry.use, 2) / 10
+  const gablePost = gableChecks.length ? gableChecks.reduce((worst, entry) => (gableRank(entry) > gableRank(worst) ? entry : worst)) : null
 
   // Rigle nose vetar između stubova, svaka svoju traku zida.
   const girtBand = height / (girtRows + 1)
   const girtSpan = girts.reduce((widest, girt) => Math.max(widest, distance(girt.a, girt.b)), 0)
-  const girt = checkBeam(Math.max(girtSpan, 0.5), loads.wallDesign * girtBand, loads.wallService * girtBand, BEAM_PROFILES)
+  const girt = checkBeam(Math.max(girtSpan, 0.5), loads.wallDesign * girtBand, loads.wallService * girtBand, system.catalogs?.girt ?? BEAM_PROFILES)
 
   // Dijagonale u zidu primaju vetar sa zabata: polovina sile na svaki od dva zida
   // paralelna vetru, podeljena na dijagonale tog zida.
@@ -486,17 +519,18 @@ export function structureFrame(scene) {
 
   // Ankeri: vetar diže krov, a sopstvena težina ga drži. Sila po stubu, sa faktorima.
   const footprint = (width + geometry.overhang * 2) * (length + geometry.overhang * 2)
-  const anchor = { force: (loads.anchorUplift * footprint) / Math.max(1, posts.length), capacity: ANCHOR_CAPACITY }
+  const anchor = { force: (loads.anchorUplift * footprint) / Math.max(1, posts.length), capacity: system.anchor?.capacity ?? ANCHOR_CAPACITY, label: system.anchor?.label ?? 'dva hemijska ankera M12' }
   anchor.ok = anchor.force <= anchor.capacity
   anchor.use = anchor.force / anchor.capacity
 
   const outOfRange = snowOutOfRange(scene.site)
-  const main = truss ? chord.ok && fullSpan <= TRUSS_SPAN_LIMIT : rafter.ok && rafterSpan <= RAFTER_SPAN_LIMIT
+  const main = portal ? portalFrame.ok : truss ? chord.ok && fullSpan <= TRUSS_SPAN_LIMIT : rafter.ok && rafterSpan <= RAFTER_SPAN_LIMIT
   const members = [
-    { id: 'main', name: truss ? 'Pojas rešetke' : 'Krovni nosač', check: truss ? chord : rafter },
+    { id: 'main', name: portal ? 'Rog rama' : truss ? 'Pojas rešetke' : 'Krovni nosač', check: portal ? portalFrame.rafter : truss ? chord : rafter },
     { id: 'plate', name: 'Venac', check: plate },
     ...(purlin ? [{ id: 'purlin', name: 'Rožnjače', check: purlin }] : []),
-    { id: 'post', name: 'Stubovi', check: strongest },
+    { id: 'post', name: portal ? 'Stubovi rama' : 'Stubovi', check: strongest },
+    ...(gablePost ? [{ id: 'gable', name: 'Zabatni stubovi', check: gablePost }] : []),
     { id: 'girt', name: 'Rigle', check: girt },
     ...(wallBraces.length ? [{ id: 'brace', name: 'Dijagonale', check: brace }] : []),
     { id: 'anchor', name: 'Ankeri', check: anchor },
@@ -504,6 +538,11 @@ export function structureFrame(scene) {
   const sizing = {
     system: system.id,
     framed,
+    portal,
+    portalFrame,
+    purlinMax,
+    // Vute: dve po ramu, svaka desetina raspona, od istog profila kao rog.
+    haunch: portal && system.haunch ? { count: Math.round(rafters.length / Math.max(1, geometry.planes.length)) * 2, length: Math.round(fullSpan * HAUNCH_RATIO * 100) / 100 } : null,
     frameSpacing: framed ? frameSpacing : null,
     truss,
     snow,
@@ -513,12 +552,13 @@ export function structureFrame(scene) {
     load,
     designLoad,
     areaLoad: loads.roofService,
-    span: truss ? fullSpan : rafterSpan,
-    rafter,
+    span: truss || portal ? fullSpan : rafterSpan,
+    rafter: portal ? portalFrame.rafter : rafter,
     chord,
     plate,
     purlin,
     post: strongest,
+    gablePost,
     girt,
     brace: wallBraces.length ? brace : null,
     anchor,

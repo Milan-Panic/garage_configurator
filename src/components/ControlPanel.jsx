@@ -36,7 +36,7 @@ import { ALTITUDE_LIMITS, DEFAULT_SITE, PLACES, WIND_OPTIONS, snowLoad, snowSour
 import { DEFAULT_SKYLIGHTS, SKYLIGHT_KINDS, SKYLIGHT_LIMITS } from '../skylights'
 import { DIMENSION_LIMITS, LIGHT_STRUCTURE, formatMeters } from '../config'
 import { buildEstimate, hingeCount } from '../estimate'
-import { DEFAULT_STRUCTURE, PROTECTIONS, SYSTEMS, protectionOf, steelKg, structureCost, systemMismatch, systemOf } from '../systems'
+import { DEFAULT_STRUCTURE, PROTECTIONS, SYSTEMS, frameSpacingOf, protectionOf, steelKg, structureCost, switchSystem, systemMismatch, systemOf } from '../systems'
 import { accessLabel, formatDate, projectAccess } from '../billing/entitlements'
 import { useBilling } from '../billing/paymentService'
 import { LockedPreview } from './LockedPreview'
@@ -272,7 +272,7 @@ export function ControlPanel(props) {
 
 /* ---------- Objekat ---------- */
 
-function ShapeTab({ scene, estimate, catalog, billing, onDimensionChange, onSceneChange, onRoofChange, onPartChange, onSettle }) {
+function ShapeTab({ scene, estimate, catalog, partners = [], billing, onDimensionChange, onSceneChange, onRoofChange, onPartChange, onSettle }) {
   const { dimensions, roof } = scene
   const lock = billing.access.lock
   const site = scene.site || DEFAULT_SITE
@@ -498,7 +498,7 @@ function ShapeTab({ scene, estimate, catalog, billing, onDimensionChange, onScen
             onChange={(truss) => onRoofChange({ truss })}
           />
         )}
-        {!estimate.sizing.mainOk && !estimate.sizing.outOfRange && !estimate.sizing.truss && (
+        {!estimate.sizing.mainOk && !estimate.sizing.outOfRange && !estimate.sizing.truss && !estimate.sizing.portal && (
           <p className="flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-amber-200">
             <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-600" />
             Raspon je prevelik za kutijasti nosač. Uključi rešetku.
@@ -522,43 +522,46 @@ function ShapeTab({ scene, estimate, catalog, billing, onDimensionChange, onScen
         {roof.kind !== 'flat' && <Hint>Visina je do niže strehe. Slemen i viši zid idu iznad toga, po nagibu.</Hint>}
       </Section>
 
-      <SystemSection scene={scene} estimate={estimate} catalog={catalog} onSceneChange={onSceneChange} />
+      <SystemSection scene={scene} catalog={catalog} partners={partners} onSceneChange={onSceneChange} />
     </div>
   )
 }
 
 // Izbor sistema konstrukcije. Za svaki sistem se računa isti objekat, pa kartica
 // pokazuje kilograme čelika i da li prolazi grubu proveru.
-function SystemSection({ scene, estimate, catalog = [], onSceneChange }) {
+function SystemSection({ scene, catalog = [], partners = [], onSceneChange }) {
   const structure = scene.structure ?? DEFAULT_STRUCTURE
   const span = Math.min(scene.dimensions.width, scene.dimensions.length)
+  // Sistemi se porede sa izradom i montažom, jer se baš po radu najviše razlikuju.
   const options = useMemo(
     () =>
       SYSTEMS.map((system) => {
-        const variant = system.id === structure.system ? estimate : buildEstimate({ ...scene, structure: { ...structure, system: system.id } })
-        return { system, kg: steelKg(variant), cost: structureCost(variant, catalog), ok: variant.sizing.ok, mismatch: systemMismatch(system, span) }
+        const variant = buildEstimate({ ...scene, structure: { ...(system.id === structure.system ? structure : switchSystem(structure, system.id)), fabrication: true } })
+        const firms = partners.filter((partner) => Number(partner.prices?.[system.fabricationId]) > 0).length
+        return { system, kg: steelKg(variant), cost: structureCost(variant, catalog), ok: variant.sizing.ok, mismatch: systemMismatch(system, span), firms }
       }),
-    [scene, structure, estimate, catalog, span],
+    [scene, structure, catalog, partners, span],
   )
   const passing = options.filter((option) => option.ok && !option.mismatch)
   // Preporuka ide po ceni konstrukcije; bez cenika po kilogramima.
   const measure = (option) => option.cost || option.kg
   const best = passing.length ? passing.reduce((a, b) => (measure(b) < measure(a) ? b : a)).system.id : null
   const current = systemOf(structure)
-  const limits = SYSTEMS.find((system) => system.frameSpacing).frameSpacing
+  const limits = current.frameSpacing
+  const protection = protectionOf(structure)
   const setStructure = (part) => onSceneChange({ structure: { ...structure, ...part } })
 
   return (
     <Section icon={Ruler} title="Sistem konstrukcije">
       <div className="grid gap-2">
-        {options.map(({ system, kg, cost, ok, mismatch }) => {
+        {options.map(({ system, kg, cost, ok, mismatch, firms }) => {
           const active = system.id === current.id
           return (
             <button
               key={system.id}
               type="button"
               aria-pressed={active}
-              onClick={() => setStructure({ system: system.id })}
+              onClick={() => onSceneChange({ structure: switchSystem(structure, system.id) })}
               className={`rounded-lg border px-3 py-2 text-left transition ${active ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white text-stone-800 hover:border-stone-400'} ${mismatch && !active ? 'opacity-60' : ''}`}
             >
               <span className="flex items-center justify-between gap-2">
@@ -571,16 +574,17 @@ function SystemSection({ scene, estimate, catalog = [], onSceneChange }) {
                 <span className="tabular-nums">≈ {Math.round(kg).toLocaleString('sr-RS')} kg čelika</span>
                 <span>{Math.round(kg / (scene.dimensions.width * scene.dimensions.length))} kg/m²</span>
                 <span className={ok ? (active ? 'text-emerald-300' : 'text-emerald-700') : active ? 'text-amber-300' : 'text-amber-700'}>{ok ? 'prolazi proveru' : 'ne prolazi proveru'}</span>
+                {firms > 0 && <span>{firms === 1 ? '1 firma radi ovaj sistem' : `${firms} firme rade ovaj sistem`}</span>}
               </span>
               {mismatch && <span className={`mt-1 block text-xs ${active ? 'text-amber-200' : 'text-amber-700'}`}>{mismatch}</span>}
             </button>
           )
         })}
       </div>
-      {current.frameSpacing && (
+      {limits && (
         <Slider
-          label="Razmak okvira"
-          value={structure.frameSpacing}
+          label={current.family === 'frames' ? 'Razmak okvira' : 'Razmak ramova'}
+          value={frameSpacingOf(structure)}
           min={limits.min}
           max={limits.max}
           step={limits.step}
@@ -589,16 +593,24 @@ function SystemSection({ scene, estimate, catalog = [], onSceneChange }) {
         />
       )}
       <Hint>
-        Cena i kilogrami su za ovaj objekat i ovu lokaciju: profili, zaštita i projekat, po ceniku, bez izrade i montaže. Najjeftiniji sistem koji prolazi proveru dobija oznaku „Preporučeno”. Konačan izbor i preseke potvrđuje statičar.
+        Cena i kilogrami su za ovaj objekat i ovu lokaciju: profili, zaštita, izrada i montaža i projekat, po ceniku. Najjeftiniji sistem koji prolazi proveru dobija oznaku „Preporučeno”. Konačan izbor i preseke potvrđuje statičar.
       </Hint>
-      <Segmented
-        label="Zaštita od korozije"
-        value={protectionOf(structure).id}
-        options={PROTECTIONS.map((entry) => ({ id: entry.id, name: entry.name }))}
-        onChange={(protection) => setStructure({ protection })}
-        columns={3}
+      {current.protections.length > 1 && (
+        <Segmented
+          label="Zaštita od korozije"
+          value={protection.id}
+          options={PROTECTIONS.filter((entry) => current.protections.includes(entry.id)).map((entry) => ({ id: entry.id, name: entry.name }))}
+          onChange={(id) => setStructure({ protection: id })}
+          columns={current.protections.length}
+        />
+      )}
+      <Hint>{current.protections.length > 1 ? protection.detail : `Zaštita: ${protection.name.toLowerCase()}. ${protection.detail}`}</Hint>
+      <Toggle
+        label="Izrada i montaža konstrukcije"
+        detail="Doda rad bravara i montažu po kg čelika, po ceni za izabrani sistem. Isključi ako konstrukciju praviš sam."
+        checked={Boolean(structure.fabrication)}
+        onChange={(fabrication) => setStructure({ fabrication })}
       />
-      <Hint>{protectionOf(structure).detail}</Hint>
       <Toggle
         label="Projekat konstrukcije"
         detail="Statičar proverava i potpisuje konstrukciju i daje crteže za izradu. Treba za rešenje iz člana 145 i za dozvolu."

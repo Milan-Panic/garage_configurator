@@ -108,6 +108,9 @@ export function PartnerPage() {
         <p className="mt-3 text-sm leading-relaxed text-stone-700">
           Unesi cene za artikle koje prodaješ. Kupac tada vidi tvoju komplet ponudu izračunatu za svoj objekat, a do tebe stiže upit sa spiskom stavki.
         </p>
+        <p className="mt-2 text-sm leading-relaxed text-stone-700">
+          Ako radiš konstrukcije, upiši cenu izrade i montaže po kg za svaki sistem koji izrađuješ (garažni skelet, okviri sa rešetkama, C/Z ram, hala IPE/HEA, kit). Kupac uz taj sistem vidi da ga tvoja firma radi.
+        </p>
 
         {!token && (
           <div className="mt-8 max-w-md">
