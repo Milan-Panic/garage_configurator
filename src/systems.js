@@ -13,6 +13,7 @@ export const SYSTEMS = [
     pitch: 'Kutijasti stubovi na 2 m i nosači na 1,2 m. Najjednostavnija izrada, svaki bravar je radi.',
     best: 'garaže i šupe do 6 m raspona',
     span: { max: 8 },
+    height: { max: 4.5 },
     protections: WELDED,
     fabricationId: 'fab-skelet-kg',
     anchor: { label: 'dva hemijska ankera M12', capacity: 16 },
@@ -24,6 +25,7 @@ export const SYSTEMS = [
     pitch: 'Stub i rešetka čine okvir na 3–5 m, a između njih idu jače rožnjače. Manje komada i manje čelika za veće raspone.',
     best: 'radionice i magacini od 6 do 12 m raspona',
     span: { min: 5, max: 12 },
+    height: { max: 5 },
     frameSpacing: { min: 3, max: 5, step: 0.5, default: 4 },
     // Rožnjače idu u čvorove rešetke, pa pojas ne radi na savijanje.
     purlinMax: 1.5,
@@ -38,6 +40,7 @@ export const SYSTEMS = [
     pitch: 'Fabrički pocinkovani C profili spojeni zavrtnjima i pločama, Z rožnjače na preklop. Bez varenja i farbanja, brza montaža, lako produženje.',
     best: 'garaže, radionice i magacini od 5 do 12 m',
     span: { min: 4, max: 12 },
+    height: { max: 5 },
     frameSpacing: { min: 3, max: 6, step: 0.5, default: 4.5 },
     purlinMax: 1.2,
     catalogs: { rafter: C_FRAME_PROFILES, column: C_FRAME_PROFILES, purlin: Z_PROFILES, girt: Z_PROFILES },
@@ -53,6 +56,7 @@ export const SYSTEMS = [
     pitch: 'Vruće valjani ramovi na 5–6 m bez zatega i rešetki: čist prostor do krova, a ram može da primi kran ili solarne panele.',
     best: 'radionice, magacini i hale od 8 do 20 m raspona',
     span: { min: 8, max: 20 },
+    height: { max: 8 },
     frameSpacing: { min: 4, max: 7, step: 0.5, default: 6 },
     purlinMax: 1.5,
     catalogs: { rafter: IPE, column: [...IPE, ...HEA].sort((a, b) => a.kg - b.kg), purlin: Z_PROFILES, girt: Z_PROFILES },
@@ -68,6 +72,7 @@ export const SYSTEMS = [
     pitch: 'Lukovi od tankih pocinkovanih cevi na zavrtnje, na 1–1,5 m. Najjeftinije i može sam da se montira, ali nosi malo snega.',
     best: 'nadstrešnice i male šupe u ravnici, do 4,5 m',
     span: { max: 4.5 },
+    height: { max: 3 },
     frameSpacing: { min: 1, max: 1.5, step: 0.25, default: 1.25 },
     purlinMax: 0.9,
     catalogs: { rafter: TUBE_PROFILES, column: TUBE_PROFILES, purlin: BEAM_PROFILES, girt: BEAM_PROFILES },
@@ -132,10 +137,11 @@ export function switchSystem(structure, id) {
 
 const fmt = (value) => String(value).replace('.', ',')
 
-// Zašto sistem ne odgovara objektu, ili null kad odgovara. `span` je kraći raspon.
-export function systemMismatch(system, span) {
+// Zašto sistem ne odgovara objektu, ili null kad odgovara. `span` je kraći raspon, `height` visina zida.
+export function systemMismatch(system, span, height = 0) {
   if (system.span?.min && span < system.span.min) return `Za raspon ispod ${fmt(system.span.min)} m ovaj sistem nema smisla.`
   if (system.span?.max && span > system.span.max) return `Za raspon preko ${fmt(system.span.max)} m ovaj sistem nije predviđen.`
+  if (system.height?.max && height > system.height.max) return `Za visinu preko ${fmt(system.height.max)} m ovaj sistem nije predviđen.`
   return null
 }
 
