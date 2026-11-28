@@ -1,11 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
-import { RotateCcw, RotateCw, Smartphone, X } from 'lucide-react'
+import { RotateCcw, Smartphone, X } from 'lucide-react'
 import { arSupport, openQuickLook, startWebXR } from '../ar'
+
+const meters = (value) => `${value.toFixed(1).replace('.', ',')} m`
+
+// Uputstvo u sloju preko kamere, za svaki korak postavljanja.
+function guide({ phase, found, aimOk, width }) {
+  if (phase === 'placed') return { title: 'Objekat je postavljen.', note: 'Prednja strana je između dve tačke. „Ispočetka“ ako hoćeš drugo mesto.' }
+  if (!aimOk) return { title: 'Uperi telefon prema tlu ispred sebe.', note: '' }
+  const floor = found ? '' : 'Tlo još nije prepoznato, pa je beli krug procena. Polako pomeraj telefon levo-desno: kad krug požuti, mesto je tačno.'
+  if (phase === 'second') return { title: `Navedi krug duž prednje strane i dodirni ekran. Prednja strana je široka ${meters(width)}.`, note: floor }
+  return { title: 'Navedi krug na prvi ugao prednje strane (sa vratima) i dodirni ekran.', note: floor }
+}
 
 // Prozor za kameru: na telefonu pokreće AR, na računaru objašnjava kako.
 export function ArPanel({ getBuilding, onClose }) {
   const [support, setSupport] = useState('checking')
   const [state, setState] = useState('idle')
+  const [ar, setAr] = useState(null)
   const [error, setError] = useState('')
   const overlay = useRef(null)
   const session = useRef(null)
@@ -31,8 +43,9 @@ export function ArPanel({ getBuilding, onClose }) {
         return
       }
       setState('running')
+      setAr(null)
       session.current = await startWebXR(building, overlay.current, {
-        onPlaced: () => setState('placed'),
+        onState: setAr,
         onEnd: () => {
           session.current = null
           setState('idle')
@@ -44,24 +57,26 @@ export function ArPanel({ getBuilding, onClose }) {
     }
   }
 
-  const running = state === 'running' || state === 'placed'
+  const running = state === 'running'
+  const text = ar ? guide(ar) : { title: 'Pokrećem kameru…', note: '' }
 
   return (
     <>
-      {/* Sloj preko kamere u WebXR sesiji: uputstvo, okretanje i izlaz. */}
+      {/* Sloj preko kamere u WebXR sesiji: uputstvo, ispočetka i izlaz. */}
       <div ref={overlay} className={running ? 'fixed inset-0 z-[70] flex flex-col justify-between p-4' : 'hidden'}>
-        <p className="self-center rounded-full bg-black/60 px-4 py-2 text-sm font-medium text-white">
-          {state === 'placed' ? 'Dodirni drugo mesto da pomeriš objekat.' : 'Polako pomeraj telefon prema tlu, pa dodirni žuti krug.'}
-        </p>
+        <div className="self-center rounded-2xl bg-black/65 px-4 py-2.5 text-center text-white">
+          <p className="text-sm font-semibold">{text.title}</p>
+          {text.note && <p className="mt-1 text-xs text-white/80">{text.note}</p>}
+        </div>
         <div className="flex justify-center gap-3">
-          <button type="button" onClick={() => session.current?.rotate(Math.PI / 12)} className="rounded-full bg-white/90 p-3 text-stone-900" aria-label="Okreni levo">
-            <RotateCcw size={20} />
-          </button>
+          {ar && ar.phase !== 'first' && (
+            <button type="button" onClick={() => session.current?.reset()} className="flex items-center gap-1.5 rounded-full bg-white/90 px-4 py-3 text-sm font-semibold text-stone-900">
+              <RotateCcw size={16} />
+              Ispočetka
+            </button>
+          )}
           <button type="button" onClick={() => session.current?.end()} className="rounded-full bg-white/90 px-5 py-3 text-sm font-semibold text-stone-900">
             Zatvori kameru
-          </button>
-          <button type="button" onClick={() => session.current?.rotate(-Math.PI / 12)} className="rounded-full bg-white/90 p-3 text-stone-900" aria-label="Okreni desno">
-            <RotateCw size={20} />
           </button>
         </div>
       </div>
@@ -76,11 +91,21 @@ export function ArPanel({ getBuilding, onClose }) {
               </button>
             </div>
             {support === 'checking' && <p className="mt-3 text-sm text-stone-600">Proveravam da li ovaj uređaj ima kameru za AR…</p>}
+            {support === 'webxr' && (
+              <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm leading-relaxed text-stone-700">
+                <li>Uperi telefon u dvorište. Krug na tlu pokazuje gde gledaš.</li>
+                <li>Dodirni prvi ugao prednje strane, gde bi bila vrata.</li>
+                <li>Navedi krug u pravcu prednje strane i dodirni još jednom. Objekat staje iza te linije, u pravoj veličini.</li>
+              </ol>
+            )}
+            {support === 'quicklook' && (
+              <p className="mt-3 text-sm leading-relaxed text-stone-700">
+                Uperi telefon u dvorište i postavi objekat tamo gde bi stajao, u pravoj veličini. Ako hoćeš samo objekat, uključi „Bez opreme“ pre kamere.
+              </p>
+            )}
             {(support === 'webxr' || support === 'quicklook') && (
               <>
-                <p className="mt-3 text-sm leading-relaxed text-stone-700">
-                  Uperi telefon u dvorište i postavi objekat tamo gde bi stajao, u pravoj veličini. Nameštaj i auto se ne prikazuju, samo objekat.
-                </p>
+                <p className="mt-2 text-xs text-stone-500">Najbolje radi napolju, po danu. U stanu pomaže dobro svetlo i pod sa šarom.</p>
                 <button type="button" disabled={state === 'preparing'} onClick={start} className="btn-tape mt-4 w-full justify-center px-4 py-3 text-base disabled:opacity-50">
                   <Smartphone size={18} />
                   {state === 'preparing' ? 'Pripremam objekat…' : 'Pokreni kameru'}
