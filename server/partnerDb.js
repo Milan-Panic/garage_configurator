@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { DEFAULT_PRICES, PACKAGES } from '../src/prices.js'
+import { reviewedJob, reviewsFor, reviewSummary, typicalHours } from './reviewDb.js'
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -99,6 +100,11 @@ export function openPartners(db, passwords) {
   ensureColumn('partners', 'install_days', 'INTEGER NOT NULL DEFAULT 0')
   ensureColumn('partners', 'deposit_terms', "TEXT NOT NULL DEFAULT ''")
   ensureColumn('partners', 'prices_with_vat', 'INTEGER NOT NULL DEFAULT 1')
+  // Mera zaštita: firma prihvata avans po fazama, avansni račun, povraćaj i javljanje istog dana.
+  ensureColumn('partners', 'protection_at', 'TEXT')
+  // Praćenje upita: kupac vidi kad je firma pročitala upit i kad se javila.
+  ensureColumn('partner_leads', 'read_at', 'TEXT')
+  ensureColumn('partner_leads', 'contacted_at', 'TEXT')
 }
 
 function ensureColumn(table, name, type) {
@@ -119,7 +125,17 @@ function termsOf(row) {
     installDays: row.install_days || 0,
     deposit: row.deposit_terms || '',
     pricesWithVat: row.prices_with_vat !== 0,
+    protection: Boolean(row.protection_at),
   }
+}
+
+// Koliko se firma obično javlja kupcu posle prosleđenog upita, u satima.
+function responseHours(id) {
+  const rows = database.prepare(`
+    SELECT decided_at, COALESCE(contacted_at, sold_at) AS answered_at FROM partner_leads
+    WHERE partner_id = ? AND decided_at IS NOT NULL AND COALESCE(contacted_at, sold_at) IS NOT NULL
+  `).all(id)
+  return typicalHours(rows.map((row) => [row.decided_at, row.answered_at]))
 }
 
 // Šta svako sme da vidi o firmi: bez telefona i imejla, sa brojem završenih poslova.
@@ -137,6 +153,9 @@ function publicView(row) {
     verified: Boolean(row.verified_at),
     joinedAt: row.created_at,
     terms: termsOf(row),
+    protected: Boolean(row.protection_at),
+    responseHours: responseHours(row.id),
+    reviews: reviewSummary('partner', row.id),
   }
 }
 
@@ -207,6 +226,9 @@ function present(row) {
     completedJobs: completedJobs(row.id),
     joinedAt: row.created_at,
     terms: termsOf(row),
+    protected: Boolean(row.protection_at),
+    responseHours: responseHours(row.id),
+    reviews: reviewSummary('partner', row.id),
   }
 }
 
@@ -323,8 +345,10 @@ export function adminUpdatePartner(id, input) {
 export function savePartnerTerms(id, input) {
   if (!partnerRow(id)) return { error: 'Firma nije pronađena.' }
   const years = (value) => Math.round(nonNegative(value, 50))
+  const current = partnerRow(id)
+  const protection = input.protection ? current.protection_at || new Date().toISOString() : null
   database.prepare(`
-    UPDATE partners SET warranty_structure = ?, warranty_cover = ?, warranty_work = ?, install_days = ?, deposit_terms = ?, prices_with_vat = ?
+    UPDATE partners SET warranty_structure = ?, warranty_cover = ?, warranty_work = ?, install_days = ?, deposit_terms = ?, prices_with_vat = ?, protection_at = ?
     WHERE id = ?
   `).run(
     years(input.warrantyStructure),
@@ -333,6 +357,7 @@ export function savePartnerTerms(id, input) {
     Math.round(nonNegative(input.installDays, 365)),
     clean(input.deposit, 200),
     input.pricesWithVat === false ? 0 : 1,
+    protection,
     id,
   )
   return { partner: present(partnerRow(id)) }
@@ -341,7 +366,22 @@ export function savePartnerTerms(id, input) {
 export function publicPartner(id) {
   const row = partnerRow(clean(id, 80))
   if (!row || row.status !== 'active') return null
-  return publicView(row)
+  return { ...publicView(row), reviewList: reviewsFor('partner', row.id) }
+}
+
+// Posao za ocenu: samo kupčev upit sa potvrđenim završetkom.
+export function leadJob(customerKey, id) {
+  const row = database.prepare('SELECT * FROM partner_leads WHERE id = ? AND customer_key = ?').get(clean(id, 90), clean(customerKey, 80))
+  if (!row) return null
+  return { id: row.id, kind: 'partner', targetId: row.partner_id, customerKey: row.customer_key, firstName: row.first_name, completedAt: row.completed_at }
+}
+
+// Firma beleži da se javila kupcu; kupac to vidi u praćenju upita.
+export function markLeadContacted(partnerId, id) {
+  const row = database.prepare('SELECT * FROM partner_leads WHERE id = ? AND partner_id = ?').get(clean(id, 90), partnerId)
+  if (!row || !CONTACT_STATUSES.includes(row.status)) return { error: 'Upit nije pronađen.' }
+  if (!row.contacted_at) database.prepare('UPDATE partner_leads SET contacted_at = ? WHERE id = ?').run(new Date().toISOString(), row.id)
+  return { lead: presentLead(leadRow(row.id), 'partner') }
 }
 
 // Kupac potvrđuje da je posao završen. Tek tada se broji firmi.
@@ -512,13 +552,22 @@ function presentLead(row, role) {
     covered: row.covered,
     articles: row.articles,
     saleAmount: row.sale_amount,
-    partner: { id: partner?.id, name: partner?.name, city: partner?.city },
+    partner: { id: partner?.id, name: partner?.name, city: partner?.city, protected: Boolean(partner?.protection_at) },
   }
   view.completedAt = row.completed_at || null
+  // Praćenje: poslat, prosleđen firmi, pročitan, firma se javila.
+  view.track = {
+    sentAt: row.created_at,
+    forwardedAt: row.status === 'rejected' ? null : row.decided_at || null,
+    rejectedAt: row.status === 'rejected' ? row.decided_at : null,
+    readAt: row.read_at || null,
+    answeredAt: row.contacted_at || row.sold_at || null,
+  }
   if (role === 'customer') {
     // Kupac vidi kontakt firme tek kad je upit odobren.
     if (CONTACT_STATUSES.includes(row.status)) view.partner.phone = partner?.phone
     view.canConfirm = CONTACT_STATUSES.includes(row.status) && !row.completed_at
+    view.canReview = Boolean(row.completed_at) && !reviewedJob(row.id)
     return view
   }
   view.note = row.note
@@ -591,6 +640,8 @@ function chargesOf(where, ...args) {
 }
 
 export function partnerDashboard(id) {
+  // Kad firma otvori svoj pregled, prosleđeni upiti postaju pročitani.
+  database.prepare(`UPDATE partner_leads SET read_at = ? WHERE partner_id = ? AND status IN ('approved', 'sold') AND read_at IS NULL`).run(new Date().toISOString(), id)
   const leads = database.prepare(`
     SELECT * FROM partner_leads WHERE partner_id = ? AND status IN ('approved', 'sold') ORDER BY created_at DESC
   `).all(id)

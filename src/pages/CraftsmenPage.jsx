@@ -9,6 +9,7 @@ import { formatDin, mergePrices, orientationQuote, packageName, quoteItems } fro
 import { formatRange } from '../pricing'
 import { TrustBadge } from '../components/TrustBadge'
 import { ConfirmDone } from '../components/ConfirmDone'
+import { TrackSteps } from '../components/TrackSteps'
 import { badgeFor } from '../badges'
 import { navigate } from '../nav'
 import { useAccount } from '../account'
@@ -319,7 +320,7 @@ export function CraftsmenPage({ scene, projectName, billing, onSaveProject }) {
                   if (!pick) return null
                   return (
                     <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
-                      <TrustBadge jobs={pick.completedJobs} verified={pick.verified} />
+                      <TrustBadge jobs={pick.completedJobs} verified={pick.verified} protectedBy={pick.protected} reviews={pick.reviews} />
                       <a href={`/majstor/${pick.id}`} onClick={(event) => { event.preventDefault(); navigate(`/majstor/${pick.id}`) }} className="text-stone-700 underline">
                         Profil
                       </a>
@@ -343,7 +344,7 @@ export function CraftsmenPage({ scene, projectName, billing, onSaveProject }) {
                   <span className="mt-1 block text-stone-800">
                     {formatDin(entry.offer.total)} po cenovniku firme, {entry.offer.covered} od {entry.offer.articles} artikala
                   </span>
-                  <span className="mt-1 block"><TrustBadge jobs={entry.offer.partner.completedJobs} verified={entry.offer.partner.verified} /></span>
+                  <span className="mt-1 block"><TrustBadge jobs={entry.offer.partner.completedJobs} verified={entry.offer.partner.verified} protectedBy={entry.offer.partner.protected} reviews={entry.offer.partner.reviews} /></span>
                   <span className="mt-1 block text-stone-600">Firma potvrđuje konačnu cenu i dostavu kad dobije upit.</span>
                 </span>
               </label>
@@ -381,6 +382,8 @@ export function CraftsmenPage({ scene, projectName, billing, onSaveProject }) {
                 <p className="mt-1 text-stone-600">Kod ponude {lead.code} · {formatDin(lead.offerTotal)} po cenovniku firme</p>
                 <p className="mt-1 text-stone-600">{leadLabel(lead.status)}</p>
                 {lead.partner?.phone && <p className="mt-1 text-stone-800">Telefon firme: {lead.partner.phone}</p>}
+                <TrackSteps track={lead.track} who="firma" protectedBy={lead.partner?.protected} />
+
                 <ConfirmDone kind="lead" item={lead} />
               </article>
             ))}
@@ -442,6 +445,8 @@ function InquiryBoard({ inquiries, onWithdraw }) {
               Kontakt je otvoren. {item.craftsman?.profession} iz {item.craftsman?.shop}: {item.craftsman.phone}. Cena se plaća direktno majstoru.
             </p>
           )}
+          <TrackSteps track={item.track} who="majstor" protectedBy={item.craftsman?.protected} />
+
           <ConfirmDone kind="inquiry" item={item} />
         </article>
       ))}

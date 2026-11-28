@@ -16,6 +16,7 @@ import { navigate } from '../nav'
 import { formatDin, packageName } from '../prices'
 import { formatRange } from '../pricing'
 import { ConfirmDone } from '../components/ConfirmDone'
+import { TrackSteps } from '../components/TrackSteps'
 import { formatSavedAt } from '../projects'
 import { skillName } from './craftsmen'
 
@@ -246,6 +247,8 @@ function InquiryRow({ item, onWithdraw, showProject = false }) {
         {item.craftsmanPrice != null ? ` · cena majstora ${formatDin(item.craftsmanPrice)}` : ''}
       </p>
       {item.craftsman?.phone && <p className="mt-1 text-stone-800">Telefon majstora: {item.craftsman.phone}</p>}
+      <TrackSteps track={item.track} who="majstor" protectedBy={item.craftsman?.protected} />
+
       <ConfirmDone kind="inquiry" item={item} />
       {(item.canWithdraw || item.canSwitch) && (
         <button
@@ -283,6 +286,8 @@ function LeadRow({ lead, showProject = false }) {
         Kod {lead.code} · {formatDin(lead.offerTotal)} po cenovniku firme
       </p>
       {lead.partner?.phone && <p className="mt-1 text-stone-800">Telefon firme: {lead.partner.phone}</p>}
+      <TrackSteps track={lead.track} who="firma" protectedBy={lead.partner?.protected} />
+
       <ConfirmDone kind="lead" item={lead} />
     </div>
   )

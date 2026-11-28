@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { formatDin } from '../prices'
+import { ProtectionInfo } from '../components/Protection'
 import { SKILLS, skillName } from './craftsmen'
 
 const TOKEN_KEY = 'mera-workshop-token'
@@ -86,6 +87,16 @@ export function WorkshopPage() {
     setMode('registered')
   }
 
+  async function saveProtection(accepted) {
+    const response = await fetch('/api/workshop/protection', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ accepted }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (response.ok) setCraftsman(payload.craftsman)
+  }
+
   async function respond(id, decision, price) {
     const response = await fetch(`/api/workshop/inquiries/${id}`, {
       method: 'POST',
@@ -167,6 +178,13 @@ export function WorkshopPage() {
               >
                 Odjava
               </button>
+            </div>
+            <div className="space-y-2">
+              <ProtectionInfo accepted={Boolean(craftsman.protected)} />
+              <label className="flex items-start gap-2 text-sm text-stone-800">
+                <input type="checkbox" className="mt-1" checked={Boolean(craftsman.protected)} onChange={(event) => saveProtection(event.target.checked)} />
+                <span>Prihvatam uslove Mera zaštite. Kupci vide oznaku „Mera zaštita“ na mom profilu i pri izboru majstora.</span>
+              </label>
             </div>
             {inquiries.length === 0 && <p className="text-sm text-stone-600">Nema odobrenih upita. Upit vidiš tek kad ga admin pošalje.</p>}
             {inquiries.map((item) => (

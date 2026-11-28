@@ -15,6 +15,7 @@ export function AdminPage() {
   const [craftsmen, setCraftsmen] = useState([])
   const [mail, setMail] = useState([])
   const [mailReady, setMailReady] = useState(false)
+  const [reviews, setReviews] = useState([])
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export function AdminPage() {
         setCraftsmen(payload.craftsmen || [])
         setMail(payload.mail || [])
         setMailReady(Boolean(payload.mailReady))
+        setReviews(payload.reviews || [])
       }
     }
     load().catch(() => {})
@@ -102,6 +104,17 @@ export function AdminPage() {
     const payload = await response.json()
     if (!response.ok) throw new Error(payload.error || 'Provera nije sačuvana.')
     setCraftsmen(payload.craftsmen || [])
+  }
+
+  // Moderacija ocena: sakrivena ocena ne ulazi u prosek, profil ni galeriju.
+  async function hideReview(id, hidden) {
+    const response = await fetch(`/api/admin/reviews/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ hidden }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (response.ok) setReviews(payload.reviews || [])
   }
 
   const pending = inquiries.filter((item) => item.status === 'pending')
@@ -190,6 +203,26 @@ export function AdminPage() {
               <h2 className="text-xl font-semibold text-stone-950">Svi upiti</h2>
               {inquiries.filter((item) => item.status !== 'pending').map((item) => (
                 <InquiryCard key={item.id} item={item} />
+              ))}
+            </section>
+
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold text-stone-950">Ocene kupaca</h2>
+              {reviews.length === 0 && <p className="text-sm text-stone-600">Još nema ocena.</p>}
+              {reviews.map((item) => (
+                <article key={item.id} className={`flex gap-3 rounded-lg border border-stone-200 bg-white p-3 text-sm ${item.hidden ? 'opacity-60' : ''}`}>
+                  {item.photo && <img src={item.photo} alt="" className="h-16 w-24 shrink-0 rounded object-cover" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-stone-900">
+                      {'★'.repeat(item.rating)} · {item.kind === 'partner' ? 'firma' : 'majstor'} {item.targetId} · {item.name}, {item.city}
+                    </p>
+                    {item.comment && <p className="mt-1 text-stone-700">{item.comment}</p>}
+                  </div>
+                  <label className="flex shrink-0 items-center gap-1.5 text-xs">
+                    <input type="checkbox" checked={item.hidden} onChange={(event) => hideReview(item.id, event.target.checked)} />
+                    Sakrij
+                  </label>
+                </article>
               ))}
             </section>
 
