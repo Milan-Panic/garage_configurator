@@ -14,6 +14,7 @@ import { WorkshopPage } from './pages/WorkshopPage'
 import { AdminPage } from './pages/AdminPage'
 import { PartnerPage } from './pages/PartnerPage'
 import { PermitsPage } from './pages/PermitsPage'
+import { GalleryPage } from './pages/GalleryPage'
 import { OfferPage } from './pages/OfferPage'
 import { PlansPage } from './pages/PlansPage'
 import { AccountPage, ResetPasswordPage } from './pages/AccountPage'
@@ -760,7 +761,7 @@ function Configurator({ boot }) {
     onUnlock: unlockFromSubscription,
   }
 
-  const pages = ['/konfigurator', '/modeli', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda', '/paketi', '/nalog']
+  const pages = ['/konfigurator', '/modeli', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda', '/paketi', '/nalog', '/galerija']
 
   return (
     <>
@@ -776,6 +777,7 @@ function Configurator({ boot }) {
       {resetMatch && <ResetPasswordPage token={resetMatch[1]} />}
       {path === '/paketi' && <PlansPage scene={fullScene} projectName={projectNameOrDefault(projectName)} billing={billing} />}
       {path === '/dozvole' && <PermitsPage />}
+      {path === '/galerija' && <GalleryPage />}
       {path === '/modeli' && <ModelsPage onStartFrom={startFrom} onQuiz={() => setQuizOpen(true)} />}
       {path === '/ponuda' && <OfferPage scene={fullScene} projectName={projectNameOrDefault(projectName)} estimate={estimate} catalog={catalog} billing={billing} />}
       {path === '/cene' && <PricesPage />}

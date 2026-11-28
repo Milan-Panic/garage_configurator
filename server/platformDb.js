@@ -4,6 +4,7 @@ import path from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { openAccounts } from './accountDb.js'
 import { openPartners } from './partnerDb.js'
+import { openReviews, reviewedJob, reviewsFor, reviewSummary, typicalHours } from './reviewDb.js'
 
 const DEMO_PASSWORD = 'radionica'
 const REMINDER_MS = 3 * 24 * 60 * 60 * 1000
@@ -117,9 +118,14 @@ export function openPlatform(root) {
   ensureColumn('craftsmen', 'pib', "TEXT NOT NULL DEFAULT ''")
   ensureColumn('craftsmen', 'verified_at', 'TEXT')
   ensureColumn('craftsmen', 'joined_at', 'TEXT')
+  // Mera zaštita i praćenje upita kod majstora.
+  ensureColumn('craftsmen', 'protection_at', 'TEXT')
+  ensureColumn('inquiries', 'read_at', 'TEXT')
+  ensureColumn('inquiries', 'declined_at', 'TEXT')
   seedCraftsmen()
   seedAdmin()
   openPartners(database, { hashPassword, checkPassword })
+  openReviews(database, root)
   openAccounts(database, { hashPassword, checkPassword })
   return database
 }
@@ -177,7 +183,31 @@ function completedJobs(id) {
 }
 
 export function craftsmanProfile(id) {
-  return publicCraftsman(clean(id, 80))
+  const found = publicCraftsman(clean(id, 80))
+  return found ? { ...found, reviewList: reviewsFor('craftsman', found.id) } : null
+}
+
+// Posao za ocenu: samo kupčev upit sa potvrđenim završetkom.
+export function inquiryJob(customerKey, id) {
+  const row = database.prepare('SELECT * FROM inquiries WHERE id = ? AND customer_key = ?').get(clean(id, 90), clean(customerKey, 80))
+  if (!row) return null
+  return { id: row.id, kind: 'craftsman', targetId: row.craftsman_id, customerKey: row.customer_key, firstName: row.first_name || row.customer_name?.split(' ')[0], completedAt: row.completed_at }
+}
+
+// Majstor prihvata ili odbija uslove Mera zaštite.
+export function setCraftsmanProtection(id, accepted) {
+  const row = database.prepare('SELECT protection_at FROM craftsmen WHERE id = ?').get(id)
+  if (!row) return { error: 'Majstor nije pronađen.' }
+  database.prepare('UPDATE craftsmen SET protection_at = ? WHERE id = ?').run(accepted ? row.protection_at || new Date().toISOString() : null, id)
+  return { craftsman: publicCraftsman(id) }
+}
+
+function responseHours(id) {
+  const rows = database.prepare(`
+    SELECT sent_at, COALESCE(accepted_at, declined_at) AS answered_at FROM inquiries
+    WHERE craftsman_id = ? AND sent_at IS NOT NULL AND COALESCE(accepted_at, declined_at) IS NOT NULL
+  `).all(id)
+  return typicalHours(rows.map((row) => [row.sent_at, row.answered_at]))
 }
 
 // Kupac potvrđuje da je posao završen. Tek tada se broji majstoru.
@@ -332,6 +362,8 @@ export function withdrawInquiry(customerKey, id) {
 }
 
 export function workshopInquiries(craftsmanId) {
+  // Kad majstor otvori svoje upite, poslati postaju pročitani.
+  database.prepare(`UPDATE inquiries SET read_at = ? WHERE craftsman_id = ? AND status = 'sent' AND read_at IS NULL`).run(new Date().toISOString(), craftsmanId)
   return database.prepare(`
     SELECT * FROM inquiries
     WHERE craftsman_id = ? AND status IN ('sent', 'accepted', 'declined', 'paid')
@@ -344,7 +376,7 @@ export function respondInquiry(craftsmanId, id, decision, price) {
   if (!row) return { error: 'Upit nije pronađen.' }
   if (row.status !== 'sent') return { error: 'Na ovaj upit je već odgovoreno.' }
   if (decision === 'decline') {
-    database.prepare(`UPDATE inquiries SET status = 'declined' WHERE id = ?`).run(id)
+    database.prepare(`UPDATE inquiries SET status = 'declined', declined_at = ? WHERE id = ?`).run(new Date().toISOString(), id)
   } else {
     const amount = Math.round(Number(price))
     if (!Number.isFinite(amount) || amount < 1000) return { error: 'Cena je iznos u dinarima, bar 1.000.' }
@@ -476,6 +508,7 @@ function presentInquiry(row, role) {
     craftsmanPrice: row.craftsman_price,
     craftsman: {
       id: craftsman?.id,
+      protected: Boolean(database.prepare('SELECT protection_at FROM craftsmen WHERE id = ?').get(row.craftsman_id)?.protection_at),
       profession: craftsman?.profession,
       shop: craftsman?.shop,
       city: craftsman?.city,
@@ -484,8 +517,17 @@ function presentInquiry(row, role) {
     },
   }
   view.completedAt = row.completed_at || null
+  // Praćenje: poslat, prosleđen majstoru, pročitan, majstor odgovorio.
+  view.track = {
+    sentAt: row.created_at,
+    forwardedAt: row.sent_at || null,
+    rejectedAt: row.rejected_at || null,
+    readAt: row.read_at || null,
+    answeredAt: row.accepted_at || row.declined_at || null,
+  }
   if (role === 'customer') {
     view.canConfirm = open && !row.completed_at
+    view.canReview = Boolean(row.completed_at) && !reviewedJob(row.id)
     view.canWithdraw = row.status === 'pending'
     view.canSwitch = row.status === 'sent' && Date.now() - sentAt >= REMINDER_MS
   }
@@ -507,7 +549,7 @@ function presentInquiry(row, role) {
 }
 
 function publicCraftsman(id) {
-  const row = database.prepare('SELECT id, profession, shop, city, bio, verified_at, joined_at FROM craftsmen WHERE id = ?').get(id)
+  const row = database.prepare('SELECT id, profession, shop, city, bio, verified_at, joined_at, protection_at FROM craftsmen WHERE id = ?').get(id)
   if (!row) return null
   return {
     id: row.id,
@@ -520,6 +562,9 @@ function publicCraftsman(id) {
     completedJobs: completedJobs(id),
     verified: Boolean(row.verified_at),
     joinedAt: row.joined_at || null,
+    protected: Boolean(row.protection_at),
+    responseHours: responseHours(id),
+    reviews: reviewSummary('craftsman', id),
   }
 }
 

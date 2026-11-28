@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PriceEditor } from '../components/PriceEditor'
+import { ProtectionInfo } from '../components/Protection'
 import { CHARGE_KIND } from '../partners'
 import { PACKAGES, formatDin, packageName } from '../prices'
 
@@ -100,6 +101,13 @@ export function PartnerPage() {
     await load()
   }
 
+  async function markContacted(id) {
+    const response = await fetch(`/api/partner/leads/${encodeURIComponent(id)}/contacted`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || 'Nije sačuvano.')
+    await load()
+  }
+
   async function reportSale(id, amount) {
     const response = await fetch(`/api/partner/leads/${id}/sale`, {
       method: 'POST',
@@ -181,7 +189,7 @@ export function PartnerPage() {
               <h2 className="text-xl font-semibold text-stone-950">Upiti kupaca</h2>
               {data.leads.length === 0 && <p className="text-sm text-stone-600">Još nema odobrenih upita.</p>}
               {data.leads.map((lead) => (
-                <LeadCard key={lead.id} lead={lead} onSale={reportSale} />
+                <LeadCard key={lead.id} lead={lead} onSale={reportSale} onContacted={markContacted} />
               ))}
             </section>
 
@@ -226,6 +234,7 @@ function TermsForm({ terms = {}, onSave }) {
     installDays: terms.installDays || '',
     deposit: terms.deposit || '',
     pricesWithVat: terms.pricesWithVat !== false,
+    protection: Boolean(terms.protection),
   })
   const [note, setNote] = useState('')
   const set = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }))
@@ -252,6 +261,13 @@ function TermsForm({ terms = {}, onSave }) {
         <input type="checkbox" checked={values.pricesWithVat} onChange={(event) => setValues((current) => ({ ...current, pricesWithVat: event.target.checked }))} />
         Cene u mom cenovniku su sa PDV-om. Ako nisu, Mera kupcu dodaje 20% da ponude budu uporedive.
       </label>
+      <div className="space-y-2 sm:col-span-2">
+        <ProtectionInfo accepted={values.protection} />
+        <label className="flex items-start gap-2">
+          <input type="checkbox" className="mt-1" checked={values.protection} onChange={(event) => setValues((current) => ({ ...current, protection: event.target.checked }))} />
+          <span>Prihvatam uslove Mera zaštite za svaki posao preko Mere. Kupci vide oznaku „Mera zaštita“ pored mog bedža.</span>
+        </label>
+      </div>
       <div className="flex items-center gap-3 sm:col-span-2">
         <button type="submit" className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white">Sačuvaj uslove</button>
         {note && <span className="text-stone-600">{note}</span>}
@@ -269,7 +285,7 @@ function NumberField({ label, value, onChange }) {
   )
 }
 
-function LeadCard({ lead, onSale }) {
+function LeadCard({ lead, onSale, onContacted }) {
   const [amount, setAmount] = useState('')
   const [problem, setProblem] = useState('')
   return (
@@ -278,6 +294,14 @@ function LeadCard({ lead, onSale }) {
       <p className="mt-1 text-stone-700">{lead.customer?.name} · {lead.customer?.phone} · {lead.customer?.email}</p>
       <p className="mt-1 text-stone-600">Po tvom cenovniku {formatDin(lead.offerTotal)}, {lead.covered} od {lead.articles} artikala.</p>
       {lead.note && <p className="mt-2 text-stone-700">{lead.note}</p>}
+      {/* Kupac u praćenju upita vidi kad se firma javila. */}
+      {lead.track?.answeredAt ? (
+        <p className="mt-2 text-emerald-900">Javio si se kupcu {new Date(lead.track.answeredAt).toLocaleString('sr-Latn-RS', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}.</p>
+      ) : (
+        <button type="button" onClick={() => onContacted(lead.id).catch((reason) => setProblem(reason.message))} className="mt-2 rounded-lg bg-stone-900 px-3 py-2 font-medium text-white">
+          Javio sam se kupcu
+        </button>
+      )}
       <details className="mt-2">
         <summary className="cursor-pointer text-stone-700">Stavke</summary>
         <ul className="mt-1 space-y-0.5 text-stone-600">

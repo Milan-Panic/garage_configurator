@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { BADGE_TIERS, badgeFor, jobsLabel, nextBadge, yearsLabel } from '../badges'
+import { Clock } from 'lucide-react'
+import { BADGE_TIERS, badgeFor, jobsLabel, nextBadge, responseLabel, yearsLabel } from '../badges'
+import { ProtectionInfo } from '../components/Protection'
+import { ReviewList } from '../components/Reviews'
 import { navigate } from '../nav'
 import { packageName } from '../prices'
 import { TrustBadge } from '../components/TrustBadge'
@@ -41,7 +44,7 @@ export function ProfilePage({ kind, id }) {
   const badge = badgeFor(jobs)
   const next = nextBadge(jobs)
   const terms = profile.terms
-  const joined = profile.joinedAt ? new Date(profile.joinedAt).toLocaleDateString('sr-RS', { month: 'long', year: 'numeric' }) : null
+  const joined = profile.joinedAt ? new Date(profile.joinedAt).toLocaleDateString('sr-Latn-RS', { month: 'long', year: 'numeric' }) : null
 
   return (
     <div className="h-full overflow-y-auto">
@@ -53,8 +56,14 @@ export function ProfilePage({ kind, id }) {
           {joined ? ` · na Meri od ${joined}` : ''}
         </p>
         <div className="mt-4">
-          <TrustBadge jobs={jobs} verified={profile.verified} size="md" />
+          <TrustBadge jobs={jobs} verified={profile.verified} protectedBy={profile.protected} reviews={profile.reviews} size="md" />
         </div>
+        {responseLabel(profile.responseHours) && (
+          <p className="mt-2 flex items-center gap-1.5 text-sm text-stone-700">
+            <Clock size={14} className="text-stone-500" />
+            {responseLabel(profile.responseHours)}, prema stvarnim upitima preko Mere.
+          </p>
+        )}
 
         <section className="mt-8 grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-stone-300 bg-white p-4">
@@ -98,10 +107,21 @@ export function ProfilePage({ kind, id }) {
           </section>
         )}
 
+        <section className="mt-4">
+          <ProtectionInfo accepted={Boolean(profile.protected)} />
+        </section>
+
+        <section className="mt-8">
+          <h2 className="text-xl font-semibold text-stone-950">Ocene kupaca</h2>
+          <div className="mt-3">
+            <ReviewList list={profile.reviewList} />
+          </div>
+        </section>
+
         <section className="mt-8">
           <h2 className="text-xl font-semibold text-stone-950">Kako se dobijaju oznake</h2>
           <p className="mt-2 text-sm leading-relaxed text-stone-700">
-            Posao se broji tek kada kupac na svom nalogu potvrdi da je završen. Oznaku „PIB proveren“ dodeljuje Mera posle provere firme u registru APR.
+            Posao se broji tek kada kupac na svom nalogu potvrdi da je završen. Oznaku „PIB proveren“ dodeljuje Mera posle provere firme u registru APR. Ocenu ostavlja samo kupac koji je potvrdio završen posao.
           </p>
           <ul className="mt-3 flex flex-wrap gap-2 text-sm">
             {BADGE_TIERS.map((tier) => (

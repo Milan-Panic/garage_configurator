@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'node:fs/promises'
 import { configureMail, mailReady, sendMail } from './mailer.js'
 import { modelViews, recordModelView } from './statsDb.js'
+import { adminReviews, createReview, galleryItems, reviewPhotoPath, setReviewHidden } from './reviewDb.js'
 import {
   adminEmail,
   adminFromToken,
@@ -32,6 +33,8 @@ import {
   confirmInquiryDone,
   craftsmanProfile,
   setCraftsmanVerified,
+  inquiryJob,
+  setCraftsmanProtection,
 } from './platformDb.js'
 import {
   adminCreatePartner,
@@ -53,6 +56,8 @@ import {
   confirmLeadDone,
   publicPartner,
   savePartnerTerms,
+  leadJob,
+  markLeadContacted,
 } from './partnerDb.js'
 import { PACKAGES } from '../src/prices.js'
 import {
@@ -121,6 +126,40 @@ function createMiddleware(root) {
       const found = profile[1] === 'partner' ? publicPartner(id) : craftsmanProfile(id)
       if (!found) return sendJson(res, 404, { error: 'Profil nije pronađen.' })
       sendJson(res, 200, { profile: found })
+      return
+    }
+    // Ocena posla: samo kupac čiji je upit, i tek kad potvrdi da je posao završen.
+    if (url === '/api/customer/reviews' && req.method === 'POST') {
+      const user = currentUser(req)
+      if (!user) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      handleJson(req, res, (raw) => {
+        const job = raw.kind === 'lead' ? leadJob(user.id, raw.jobId) : raw.kind === 'inquiry' ? inquiryJob(user.id, raw.jobId) : null
+        if (!job) return sendJson(res, 404, { error: 'Posao nije pronađen.' })
+        const result = createReview(job, raw)
+        sendJson(res, result.error ? 400 : 200, result)
+      })
+      return
+    }
+    if (url?.startsWith('/api/review-photos/') && req.method === 'GET') {
+      const file = reviewPhotoPath(decodeURIComponent(url.slice('/api/review-photos/'.length)))
+      if (!file) return sendJson(res, 404, { error: 'Nema fotografije.' })
+      fs.readFile(file)
+        .then((buffer) => {
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'image/jpeg')
+          res.end(buffer)
+        })
+        .catch(() => sendJson(res, 404, { error: 'Nema fotografije.' }))
+      return
+    }
+    if (url === '/api/gallery' && req.method === 'GET') {
+      const names = new Map()
+      const nameOf = (item) => {
+        const key = `${item.kind}:${item.targetId}`
+        if (!names.has(key)) names.set(key, item.kind === 'partner' ? publicPartner(item.targetId)?.name : craftsmanProfile(item.targetId)?.shop)
+        return names.get(key) || ''
+      }
+      sendJson(res, 200, { items: galleryItems().map((item) => ({ ...item, targetName: nameOf(item) })) })
       return
     }
     const leadDone = /^\/api\/customer\/leads\/([^/]+)\/done$/.exec(url || '')
@@ -214,6 +253,12 @@ function createMiddleware(root) {
         })
         return
       }
+      const contacted = /^\/api\/partner\/leads\/([^/]+)\/contacted$/.exec(url)
+      if (contacted && req.method === 'POST') {
+        const result = markLeadContacted(partner.id, decodeURIComponent(contacted[1]))
+        sendJson(res, result.error ? 400 : 200, result)
+        return
+      }
       const sale = /^\/api\/partner\/leads\/([^/]+)\/sale$/.exec(url)
       if (sale && req.method === 'POST') {
         handleJson(req, res, (raw) => {
@@ -252,6 +297,15 @@ function createMiddleware(root) {
       sendJson(res, 200, { craftsman, inquiries: workshopInquiries(craftsman.id) })
       return
     }
+    if (url === '/api/workshop/protection' && req.method === 'PUT') {
+      const craftsman = craftsmanFromToken(bearer(req))
+      if (!craftsman) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      handleJson(req, res, (raw) => {
+        const result = setCraftsmanProtection(craftsman.id, Boolean(raw.accepted))
+        sendJson(res, result.error ? 400 : 200, result)
+      })
+      return
+    }
     if (url?.startsWith('/api/workshop/inquiries/') && req.method === 'POST') {
       const craftsman = craftsmanFromToken(bearer(req))
       if (!craftsman) return sendJson(res, 401, { error: 'Prijava je istekla.' })
@@ -283,12 +337,23 @@ function createMiddleware(root) {
             craftsmen: listCraftsmanTerms(),
             mail: recentMail(),
             mailReady: mailReady(),
+            reviews: adminReviews(),
           })
         })
         .catch((error) => {
           console.error(error)
           sendJson(res, 500, { error: 'Upiti nisu učitani.' })
         })
+      return
+    }
+    if (url?.startsWith('/api/admin/reviews/') && req.method === 'PUT') {
+      const admin = adminFromToken(bearer(req))
+      if (!admin) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      const id = decodeURIComponent(url.slice('/api/admin/reviews/'.length))
+      handleJson(req, res, (raw) => {
+        const result = setReviewHidden(id, Boolean(raw.hidden))
+        sendJson(res, result.error ? 400 : 200, result)
+      })
       return
     }
     if (url?.startsWith('/api/admin/craftsmen/') && req.method === 'PUT') {

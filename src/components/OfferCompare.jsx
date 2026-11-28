@@ -3,6 +3,7 @@ import { yearsLabel } from '../badges'
 import { navigate } from '../nav'
 import { formatDin } from '../prices'
 import { TrustBadge } from './TrustBadge'
+import { ProtectionInfo } from './Protection'
 
 // Ponuda firme u istim kolonama kao sve ostale, da kupac poredi jabuke sa jabukama.
 export function OfferTerms({ offer }) {
@@ -25,7 +26,7 @@ export function OfferTerms({ offer }) {
         ))}
       </span>
       <span className="flex flex-wrap items-center gap-2">
-        <TrustBadge jobs={partner.completedJobs} verified={partner.verified} />
+        <TrustBadge jobs={partner.completedJobs} verified={partner.verified} protectedBy={partner.protected} reviews={partner.reviews} />
         <span
           role="link"
           tabIndex={0}
@@ -79,6 +80,7 @@ export function OfferGuide() {
           ))}
         </ol>
         <p className="text-xs text-stone-500">Avans daj samo uz avansni račun i pisanu ponudu sa rokom. Bolje je avans po fazama nego ceo iznos unapred.</p>
+        <ProtectionInfo />
       </div>
     </details>
   )

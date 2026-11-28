@@ -41,3 +41,29 @@ export const VAT_RATE = 0.2
 export function vatFactor(partner) {
   return partner?.terms?.pricesWithVat === false ? 1 + VAT_RATE : 1
 }
+
+// Mera zaštita: uslovi koje firma ili majstor prihvata da bi kupac bio siguran sa avansom.
+export const PROTECTION_TERMS = [
+  ['Avans po fazama', 'Ne ceo iznos unapred, nego deo pri porudžbini i ostatak po isporuci ili montaži.'],
+  ['Avansni račun', 'Za svaku uplatu avansa kupac dobija avansni fiskalni račun.'],
+  ['Povraćaj avansa', 'Ako lokacija ne bude odobrena za gradnju, avans se vraća umanjen samo za već urađen posao.'],
+  ['Pisana ponuda', 'Ponuda sa stavkama, rokom i garancijom ide kroz Meru, pa ostaje zapisana.'],
+  ['Javljanje istog dana', 'Na prosleđen upit javlja se kupcu istog radnog dana.'],
+]
+
+// „Obično se javi za …“ iz stvarnih upita; null dok nema bar 3 odgovora.
+export function responseLabel(hours) {
+  if (!hours) return null
+  if (hours <= 8) return 'Obično se javi istog dana'
+  if (hours < 48) return `Obično se javi za oko ${hours} h`
+  return `Obično se javi za oko ${Math.round(hours / 24)} dana`
+}
+
+export function reviewsLabel(count) {
+  const n = Number(count) || 0
+  const last = n % 10
+  const word = last === 1 && n % 100 !== 11 ? 'ocena' : last >= 2 && last <= 4 && (n % 100 < 12 || n % 100 > 14) ? 'ocene' : 'ocena'
+  return `${n} ${word}`
+}
+
+export const formatRating = (value) => String(value).replace('.', ',')

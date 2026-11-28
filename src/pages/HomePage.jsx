@@ -12,6 +12,8 @@ import { useModelViews, recordModelView } from '../views'
 import { CostBox } from '../components/CostBox'
 import { ModelCard, ShotQueue } from '../components/ModelCard'
 import { TrustBadge } from '../components/TrustBadge'
+import { GalleryGrid } from '../components/Gallery'
+import { useGallery } from '../gallery'
 import { initialScene, normalizeScene } from '../scene'
 import { GarageView } from '../components/GarageView'
 import { LogoMark } from '../components/SiteHeader'
@@ -178,6 +180,8 @@ export function HomePage({ onStartFrom, onQuiz }) {
       })
       .catch(() => {})
   }, [])
+
+  const gallery = useGallery()
 
   function openModel(model) {
     recordModelView(model.id)
@@ -381,6 +385,23 @@ export function HomePage({ onStartFrom, onQuiz }) {
         </dl>
       </section>
 
+      {gallery?.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 pb-16 md:px-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="max-w-2xl">
+              <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Završeni objekti</h2>
+              <p className="mt-3 text-stone-600">Fotografije šalju kupci kad ocene posao, posle potvrđenog završetka.</p>
+            </div>
+            <button type="button" onClick={() => navigate('/galerija')} className="text-sm font-semibold text-stone-900 underline">
+              Sve fotografije
+            </button>
+          </div>
+          <div className="mt-6">
+            <GalleryGrid items={gallery.slice(0, 8)} />
+          </div>
+        </section>
+      )}
+
       {partners.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pb-16 md:px-6">
           <div className="max-w-2xl">
@@ -398,7 +419,7 @@ export function HomePage({ onStartFrom, onQuiz }) {
                 </p>
                 <p className="text-[15px] text-stone-600">{partner.city}</p>
                 <p className="mt-1 text-sm text-stone-500">{partner.packages.map(packageName).join(', ')}</p>
-                <p className="mt-1.5"><TrustBadge jobs={partner.completedJobs} verified={partner.verified} /></p>
+                <p className="mt-1.5"><TrustBadge jobs={partner.completedJobs} verified={partner.verified} protectedBy={partner.protected} reviews={partner.reviews} /></p>
                 <a href={`/firma/${partner.id}`} onClick={(event) => { event.preventDefault(); navigate(`/firma/${partner.id}`) }} className="mt-1 inline-block text-sm text-stone-800 underline">
                   Profil firme
                 </a>
