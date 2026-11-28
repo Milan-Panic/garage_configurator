@@ -232,8 +232,8 @@ export function GarageCanvas({
         </DragLock.Provider>
       </Canvas>
 
-      <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-wrap items-start justify-between gap-2">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-white/60 bg-white/85 p-1 shadow-sm backdrop-blur">
+      <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start justify-between gap-2 md:inset-x-3 md:top-3">
+        <div className="pointer-events-auto hidden items-center gap-1 rounded-xl border border-white/60 bg-white/85 p-1 shadow-sm backdrop-blur md:flex">
           <Eye size={14} className="mx-1.5 text-stone-500" aria-hidden="true" />
           {VIEWS.map((entry) => (
             <button
@@ -248,13 +248,16 @@ export function GarageCanvas({
             </button>
           ))}
         </div>
-        <div className="pointer-events-auto flex items-center gap-1 rounded-xl border border-white/60 bg-white/85 p-1 shadow-sm backdrop-blur">
+        <div
+          className="pointer-events-auto flex max-w-full touch-pan-x items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-xl border border-white/60 bg-white/85 p-0.5 shadow-sm backdrop-blur [scrollbar-width:none] md:gap-1 md:p-1"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           <button
             type="button"
             aria-pressed={xray}
             onClick={() => setXray((value) => !value)}
             title="Providni zidovi i čelični skelet iz računice"
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition md:gap-1.5 md:px-2.5 md:py-1.5 md:text-xs ${
               xray ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
@@ -266,7 +269,7 @@ export function GarageCanvas({
             aria-pressed={openTop}
             onClick={() => setOpenTop((value) => !value)}
             title="Skini krov da vidiš raspored unutra"
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition md:gap-1.5 md:px-2.5 md:py-1.5 md:text-xs ${
               openTop ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
@@ -278,7 +281,7 @@ export function GarageCanvas({
             aria-pressed={bare}
             onClick={() => setBare((value) => !value)}
             title="Sakrij nameštaj, opremu i auto, da se vidi samo objekat"
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition md:gap-1.5 md:px-2.5 md:py-1.5 md:text-xs ${
               bare ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
@@ -290,7 +293,7 @@ export function GarageCanvas({
             aria-pressed={locked}
             onClick={() => setLocked((value) => !value)}
             title={locked ? 'Otključaj raspored: predmeti, prozori i vrata ponovo mogu da se prevlače' : 'Zaključaj raspored da slučajno ne pomeriš prozor, vrata, auto ili nameštaj'}
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition md:gap-1.5 md:px-2.5 md:py-1.5 md:text-xs ${
               locked ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
@@ -305,7 +308,7 @@ export function GarageCanvas({
               setYard((value) => !value || Boolean(photo))
             }}
             title="Prikaži objekat u dvorištu, sa nebom, drvećem i čovekom za razmeru"
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            className={`flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition md:gap-1.5 md:px-2.5 md:py-1.5 md:text-xs ${
               yard && !photo ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
@@ -314,7 +317,7 @@ export function GarageCanvas({
           </button>
           <label
             title="Stavi svoju fotografiju placa u pozadinu, pa okreni objekat da legne na mesto"
-            className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+            className={`flex shrink-0 cursor-pointer items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[11px] font-medium transition md:gap-1.5 md:px-2.5 md:py-1.5 md:text-xs ${
               photo ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
             }`}
           >
@@ -332,7 +335,7 @@ export function GarageCanvas({
             />
           </label>
           {photo && (
-            <button type="button" aria-label="Ukloni fotografiju" title="Ukloni fotografiju" onClick={() => setPhoto(null)} className="rounded-lg p-1.5 text-stone-600 hover:bg-stone-100">
+            <button type="button" aria-label="Ukloni fotografiju" title="Ukloni fotografiju" onClick={() => setPhoto(null)} className="shrink-0 rounded-lg p-1.5 text-stone-600 hover:bg-stone-100">
               <X size={14} />
             </button>
           )}
@@ -358,7 +361,7 @@ export function GarageCanvas({
       </div>
 
       {camera && <ArPanel getBuilding={() => three.current?.scene.getObjectByName('mera-building')} onClose={() => setCamera(false)} />}
-      <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-xl border border-white/60 bg-white/85 px-3 py-2 text-sm text-stone-700 shadow-sm backdrop-blur">
+      <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-3 rounded-xl border border-white/60 bg-white/85 px-2.5 py-1.5 text-xs md:bottom-3 md:left-3 md:px-3 md:py-2 md:text-sm text-stone-700 shadow-sm backdrop-blur">
         <Maximize2 size={16} className="text-stone-400" aria-hidden="true" />
         <span>
           <span className="block font-semibold text-stone-900 tabular-nums">

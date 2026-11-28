@@ -171,6 +171,8 @@ function Configurator({ boot }) {
   const { scene, canUndo, canRedo, commit, transient, endGesture, undo, redo, replace } = useHistory(boot.scene)
   const [selected, setSelected] = useState(null)
   // Kviz se sam otvara samo prvi put, na praznom crtežu.
+  // Telefon: panel sa podešavanjima je sklopljen dok se ne dodirne tab, pa 3D prikaz ima više mesta.
+  const [panelOpen, setPanelOpen] = useState(false)
   const [quizOpen, setQuizOpen] = useState(() => {
     try {
       return !localStorage.getItem(QUIZ_KEY) && scenesEqual(boot.scene, initialScene)
@@ -841,8 +843,15 @@ function Configurator({ boot }) {
             onAddRoom={addRoom}
             onChangeRoom={updateRoom}
             onRemove={removeItem}
+            mobileOpen={panelOpen}
+            onMobileOpenChange={setPanelOpen}
           />
-          <main className="relative min-h-[48dvh] flex-1 md:min-h-0">
+          <main
+            className="relative min-h-[40dvh] flex-1 md:min-h-0"
+            onPointerDown={(event) => {
+              if (panelOpen && event.target.tagName === 'CANVAS') setPanelOpen(false)
+            }}
+          >
             <GarageCanvas
               dimensions={scene.dimensions}
               wallMaterial={wallMaterial}

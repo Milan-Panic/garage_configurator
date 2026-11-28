@@ -170,6 +170,8 @@ export function ControlPanel(props) {
     saveNotice,
     onProjectNameChange,
     onSaveProject,
+    mobileOpen = true,
+    onMobileOpenChange = () => {},
   } = props
   const [tab, setTab] = useState('shape')
   // Kad se u 3D izabere predmet, otvori tab u kome se on podešava.
@@ -193,21 +195,25 @@ export function ControlPanel(props) {
           : { tone: 'bg-emerald-500', text: 'Sačuvano' }
 
   return (
-    <aside className="flex max-h-[56dvh] min-h-0 w-full shrink-0 flex-col border-b border-stone-200 bg-[var(--panel)] md:max-h-none md:w-[400px] md:border-r md:border-b-0">
-      <header className="space-y-3 border-b border-stone-200 bg-white px-4 pt-4">
-        <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
+    <aside className="flex max-h-[50dvh] min-h-0 w-full shrink-0 flex-col border-b border-stone-200 bg-[var(--panel)] md:max-h-none md:w-[400px] md:border-r md:border-b-0">
+      <header className="space-y-1.5 border-b border-stone-200 bg-white px-3 pt-1.5 md:space-y-3 md:px-4 md:pt-4">
+        <div className="flex items-center gap-1 md:gap-2">
+          <div className="relative min-w-0 flex-1">
             <input
               value={projectName}
               placeholder="Moj objekat"
               aria-label="Naziv objekta"
               maxLength={60}
               onChange={(event) => onProjectNameChange(event.target.value)}
-              className="font-display w-full truncate rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-2xl font-bold text-stone-950 outline-none placeholder:text-stone-400 hover:border-stone-200 focus:border-stone-300 focus:bg-white"
+              className="peer font-display w-full truncate rounded-md border border-transparent bg-transparent px-1.5 py-0.5 text-base font-bold text-stone-950 outline-none md:text-2xl placeholder:text-stone-400 hover:border-stone-200 focus:border-stone-300 focus:bg-white"
             />
-            <p className="flex items-center gap-1.5 px-1.5 text-xs text-stone-500" role="status">
+            {/* Na telefonu stanje stoji u istom redu sa nazivom; dok se naziv upisuje, polje ide preko njega. */}
+            <p
+              className="pointer-events-none absolute inset-y-0 right-0 flex max-w-[55%] items-center gap-1.5 bg-white pr-1 pl-2 text-[11px] leading-tight text-stone-500 peer-focus:hidden md:pointer-events-auto md:static md:max-w-none md:bg-transparent md:px-1.5 md:text-xs md:peer-focus:flex"
+              role="status"
+            >
               <span className={`size-1.5 rounded-full ${status.tone}`} />
-              <span className="truncate">{status.text}</span>
+              <span className="md:truncate">{status.text}</span>
             </p>
           </div>
           <IconButton label="Poništi (Ctrl+Z)" disabled={!canUndo} onClick={onUndo} icon={Undo2} />
@@ -215,13 +221,13 @@ export function ControlPanel(props) {
           <button
             type="button"
             onClick={() => onSaveProject()}
-            className="flex items-center gap-1.5 rounded-lg bg-stone-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-stone-700"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-stone-900 px-2.5 py-2 text-sm font-medium text-white transition hover:bg-stone-700 md:px-3"
           >
             <Save size={15} />
             Sačuvaj
           </button>
         </div>
-        <nav className="-mx-4 grid grid-cols-7 border-t border-stone-200 px-2" aria-label="Delovi konfiguratora">
+        <nav className="-mx-3 grid grid-cols-7 border-t border-stone-200 px-1 md:-mx-4 md:px-2" aria-label="Delovi konfiguratora">
           {TABS.map((entry) => {
             const Icon = entry.icon
             const active = tab === entry.id
@@ -231,9 +237,14 @@ export function ControlPanel(props) {
                 key={entry.id}
                 type="button"
                 aria-pressed={active}
-                onClick={() => setTab(entry.id)}
-                className={`relative flex flex-col items-center gap-0.5 border-b-[3px] px-1 pt-2.5 pb-1.5 text-xs font-semibold transition-colors ${
-                  active ? 'border-tape text-stone-950' : 'border-transparent text-stone-500 hover:text-stone-900'
+                onClick={() => {
+                  // Na telefonu dodir na otvoreni tab sklapa panel, da 3D prikaz dobije mesto.
+                  if (active) onMobileOpenChange(!mobileOpen)
+                  else onMobileOpenChange(true)
+                  setTab(entry.id)
+                }}
+                className={`relative flex flex-col items-center gap-0.5 border-b-[3px] px-0.5 pt-1.5 pb-1 text-[11px] font-semibold transition-colors md:px-1 md:pt-2.5 md:pb-1.5 md:text-xs ${
+                  active ? (mobileOpen ? 'border-tape text-stone-950' : 'border-transparent text-stone-950 md:border-tape') : 'border-transparent text-stone-500 hover:text-stone-900'
                 }`}
               >
                 <Icon size={16} />
@@ -245,7 +256,7 @@ export function ControlPanel(props) {
         </nav>
       </header>
 
-      <div key={tab} className="relative flex-1 overflow-y-auto px-4 py-4">
+      <div key={tab} className={`relative flex-1 overflow-y-auto px-4 py-4 md:block ${mobileOpen ? '' : 'hidden'}`}>
         {tab === 'shape' && <ShapeTab {...props} />}
         {tab === 'facade' && <FacadeTab {...props} />}
         {tab === 'openings' && <OpeningsTab {...props} />}
@@ -255,15 +266,22 @@ export function ControlPanel(props) {
         {tab === 'projects' && <ProjectsTab {...props} />}
       </div>
 
-      <footer className="flex items-center gap-3 border-t border-stone-200 bg-white px-4 py-3">
-        <button type="button" onClick={() => setTab('estimate')} className="min-w-0 flex-1 text-left">
-          <span className="block text-xs text-stone-500">Okvirno, {VAT_LABEL}</span>
-          <span className="font-display block truncate text-xl leading-tight font-bold text-stone-950 tabular-nums">{formatRange(total)}</span>
+      <footer className="flex items-center gap-3 border-t border-stone-200 bg-white px-3 py-1.5 md:px-4 md:py-3">
+        <button
+          type="button"
+          onClick={() => {
+            setTab('estimate')
+            onMobileOpenChange(true)
+          }}
+          className="min-w-0 flex-1 text-left"
+        >
+          <span className="block text-[11px] leading-tight text-stone-500 md:text-xs">Okvirno, {VAT_LABEL}</span>
+          <span className="font-display block truncate text-base leading-tight font-bold text-stone-950 tabular-nums md:text-xl">{formatRange(total)}</span>
         </button>
         <button
           type="button"
           onClick={() => navigate('/majstori')}
-          className="btn-tape px-4 py-2.5 text-sm"
+          className="btn-tape px-3 py-2 text-sm md:px-4 md:py-2.5"
         >
           <Send size={15} />
           Pošalji upit
