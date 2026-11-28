@@ -21,6 +21,19 @@ import {
   WaterHeaterModel,
   WelderModel,
 } from './FurnitureExtra'
+import {
+  ArmchairModel,
+  BilliardModel,
+  BoxesModel,
+  DiningChairModel,
+  FridgeModel,
+  GrillModel,
+  PingPongModel,
+  TableModel,
+  TreadmillModel,
+  TvModel,
+  WeightBenchModel,
+} from './FurnitureLiving'
 import { Box, Cyl } from './parts'
 
 const FLOOR_PLANE = new THREE.Plane(new THREE.Vector3(0, 1, 0), -FLOOR_LEVEL)
@@ -96,6 +109,17 @@ const MODELS = {
   waterheater: WaterHeaterModel,
   boiler: BoilerModel,
   stove: StoveModel,
+  table: TableModel,
+  dinchair: DiningChairModel,
+  armchair: ArmchairModel,
+  tv: TvModel,
+  fridge: FridgeModel,
+  treadmill: TreadmillModel,
+  weightbench: WeightBenchModel,
+  billiard: BilliardModel,
+  pingpong: PingPongModel,
+  grill: GrillModel,
+  boxes: BoxesModel,
 }
 
 export function FurnitureModel({ type, width, depth, height, raise = 0 }) {

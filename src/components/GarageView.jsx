@@ -141,7 +141,8 @@ function Capture({ onShot }) {
     const tick = () => {
       if (!live) return
       frames += 1
-      if (frames < 4) {
+      // Sačeka da se senke i materijali prvi put iscrtaju, inače je slika tamna.
+      if (frames < 30) {
         requestAnimationFrame(tick)
         return
       }

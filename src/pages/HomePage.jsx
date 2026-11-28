@@ -5,7 +5,13 @@ import { clampDoor, clampPedestrian, clampWindow } from '../layout'
 import { DIMENSION_LIMITS } from '../config'
 import { buildEstimate } from '../estimate'
 import { useOfferPartners } from '../partners'
-import { PACKAGES, formatDin, mergePrices, orientationQuote, packageName, quoteTotal } from '../prices'
+import { PACKAGES, mergePrices, orientationQuote, packageName, quoteTotal } from '../prices'
+import { VAT_LABEL, formatRange } from '../pricing'
+import { MODELS } from '../catalog'
+import { useModelViews, recordModelView } from '../views'
+import { CostBox } from '../components/CostBox'
+import { ModelCard, ShotQueue } from '../components/ModelCard'
+import { TrustBadge } from '../components/TrustBadge'
 import { initialScene, normalizeScene } from '../scene'
 import { GarageView } from '../components/GarageView'
 import { LogoMark } from '../components/SiteHeader'
@@ -13,9 +19,8 @@ import { SKILLS } from './craftsmen'
 
 const PRICES = mergePrices(null)
 
-function priceOf(scene) {
-  return quoteTotal(orientationQuote(scene, buildEstimate(scene), PRICES))
-}
+// Redosled na naslovnoj dok modeli nemaju dovoljno otvaranja.
+const FEATURED = ['garaza-jedan-auto', 'garaza-dva-auta', 'ostava-alat', 'hobi-radionica', 'garaza-i-nadstresnica', 'mali-magacin', 'kucna-teretana', 'servis-jedno-mesto']
 
 // `object` je vrsta u akuzativu, za naslov „Složi … po meri".
 const SAMPLES = [
@@ -95,10 +100,9 @@ const SAMPLES = [
 ]
 
 const STEPS = [
-  { title: 'Složi objekat', text: 'Garaža, ostava, radionica ili magacin. Mere, krov, fasada, vrata i dodaci. Crta se bez naloga, a sačuvani projekti su na tvom nalogu.' },
-  { title: 'Vidi računicu', text: 'Orijentaciona cena i zbir po poslovima, besplatno. Menja se dok menjaš objekat.' },
-  { title: 'Izaberi ponudu', text: 'Kad firme imaju cene, vidiš komplet ponudu za svoj objekat. Materijal za jedan paket ide od jedne firme.' },
-  { title: 'Pošalji upit', text: 'Svaki posao ide majstoru koji ima taj skil. Ime, imejl i telefon ostavljaš tek tada.' },
+  { title: 'Nacrtaj', text: 'Kreni od gotovog modela ili od nule. Mere, krov, boje, vrata i oprema. Okvirna cena sa PDV-om se menja dok crtaš.' },
+  { title: 'Uporedi ponude', text: 'Domaće firme i majstori daju cenu za tvoj objekat. Vidiš koliko su poslova završili preko Mere i šta je u ceni.' },
+  { title: 'Montaža', text: 'Izabrani majstor dobija crtež sa merama i spisak materijala, pa nema „dođi da izmerim“ i nema iznenađenja.' },
 ]
 
 const FEATURES = [
@@ -109,15 +113,23 @@ const FEATURES = [
 ]
 
 const QUESTIONS = [
-  ['Da li je cena ponuda?', 'Ne. To je orijentacija iz materijala i mera. Ponuda je cena koju majstor unese kad prihvati upit.'],
+  ['Da li je cena ponuda?', 'Ne. To je okvirna cena materijala sa PDV-om, data kao raspon. Pored nje piše šta nije uračunato (montaža, prevoz, ploča, dozvola) i koliko to okvirno košta. Ponuda je cena koju firma ili majstor da za tvoj objekat.'],
   ['Da li treba nalog?', 'Za crtanje ne treba: trenutni crtež se pamti u pregledaču. Nalog treba kad čuvaš projekte, šalješ upit ili kupuješ paket. Pravi se imejlom ili preko Google-a.'],
   ['Kada majstor dobija moj broj?', 'Kad prihvati upit i unese svoju cenu. Tada i ti vidiš njegov telefon. Upit i kontakt ne plaćaš.'],
   ['Šta se plaća?', 'Dokumentacija za izradu: crteži sa kotama, spisak profila, raspored rezanja i lista za nabavku. Konfigurator, orijentaciona cena i upiti su besplatni. Cene su na strani Paketi.'],
   ['Da li je ponuda firme konačna?', 'Ne. Računa se iz cenovnika firme za tvoje količine. Firma potvrđuje konačnu cenu i dostavu kad dobije upit.'],
   ['Ko vidi moje projekte?', 'Samo ti, kad se prijaviš na svoj nalog, sa bilo kog uređaja. Majstor ili firma dobija crteže i računicu samo za projekat uz koji pošalješ upit.'],
   ['Mogu li da menjam objekat posle kupovine paketa?', 'Paket Uradi sam zaključava širinu i dužinu, jer je cena vezana za površinu. Visinu, krov, fasadu, vrata, prozore i dodatke menjaš 30 dana i štampaš dokumentaciju koliko god puta treba.'],
+  ['Kako znam da je majstor pouzdan?', 'Uz svaku firmu i majstora piše koliko su poslova završili preko Mere. Posao se broji tek kad kupac potvrdi da je završen. Posle prvog posla dobijaju oznaku Proveren, a posle 10, 20, 50 i 100 poslova jače oznake.'],
   ['Da li je ovo statički proračun?', 'Ne. Preseci profila su uobičajeni za lake montažne objekte. Za velike raspone treba statičar, a sajt upozorava kad mere pređu tu granicu.'],
   ['Da li mi treba dozvola?', 'Zavisi od toga čemu objekat služi i gde stoji. Kratak pregled je u Vodiču za dozvole, a konačan odgovor daje opštinski urbanizam.'],
+]
+
+const SHOWCASE = [
+  ['Moja slika', 'Fotografija placa kao pozadina, na računaru i telefonu.'],
+  ['Kamera', 'Objekat u dvorištu kroz kameru telefona, u pravoj veličini.'],
+  ['Bez opreme', 'Sakrij nameštaj i auto da vidiš sam objekat.'],
+  ['Zaključaj raspored', 'Prozori, vrata i nameštaj se ne pomeraju slučajno.'],
 ]
 
 const CANVAS = '#d3d9de'
@@ -136,8 +148,15 @@ function resize(scene, width, length) {
   }
 }
 
-export function HomePage({ onStartFrom }) {
+export function HomePage({ onStartFrom, onQuiz }) {
   const partners = useOfferPartners()
+  const views = useModelViews()
+  const featured = MODELS.filter((model) => FEATURED.includes(model.id))
+    .map((model) => ({ model, rank: (views[model.id] || 0) * 100 - FEATURED.indexOf(model.id) }))
+    .concat(MODELS.filter((model) => !FEATURED.includes(model.id) && (views[model.id] || 0) > 0).map((model) => ({ model, rank: (views[model.id] || 0) * 100 - 50 })))
+    .sort((a, b) => b.rank - a.rank)
+    .slice(0, 8)
+    .map((entry) => entry.model)
   const [cities, setCities] = useState(['Beograd', 'Zemun', 'Novi Sad', 'Pančevo', 'Subotica'])
   const [pick, setPick] = useState(0)
   const [size, setSize] = useState(SAMPLES[0].scene.dimensions)
@@ -160,6 +179,11 @@ export function HomePage({ onStartFrom }) {
       .catch(() => {})
   }, [])
 
+  function openModel(model) {
+    recordModelView(model.id)
+    start(model.scene)
+  }
+
   function start(scene) {
     if (onStartFrom) onStartFrom(scene)
     else navigate('/konfigurator')
@@ -175,11 +199,11 @@ export function HomePage({ onStartFrom }) {
       <section className="mx-auto grid max-w-7xl gap-x-12 gap-y-8 px-4 pt-10 pb-14 md:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] lg:items-start lg:pt-14">
         <div>
           <h1 className="text-[2.75rem] leading-[0.95] font-extrabold text-stone-950 sm:text-6xl xl:text-7xl">
-            Složi {sample.object} po meri pre nego što pozoveš majstora.
+            Nacrtaj {sample.object} u 3D. Vidi cenu odmah.
           </h1>
           <p className="mt-5 max-w-[34rem] text-lg leading-relaxed text-stone-700">
-            Probaj odmah: izaberi objekat i povuci kote. Model i orijentaciona cena prate svaku
-            izmenu, a upit ide majstorima i firmama tek kad ti odlučiš.
+            Okvirna cena sa PDV-om i spisak šta je uračunato, a šta nije. Kad odlučiš, dobijaš ponude
+            domaćih firmi i majstora koji su već završili poslove preko Mere.
           </p>
 
           <div className="mt-8 max-w-[34rem] space-y-5">
@@ -206,6 +230,11 @@ export function HomePage({ onStartFrom }) {
             <button type="button" onClick={() => start(live)} className="btn-tape px-6 py-3.5 text-base">
               Nastavi sa ovim objektom
             </button>
+            {onQuiz && (
+              <button type="button" onClick={onQuiz} className="rounded-lg border-[1.5px] border-stone-900 px-5 py-3 text-base font-semibold text-stone-900 hover:bg-stone-900 hover:text-white">
+                Pomozi mi da izaberem
+              </button>
+            )}
             <a
               href="/dozvole"
               onClick={(event) => {
@@ -234,7 +263,7 @@ export function HomePage({ onStartFrom }) {
               <Stamp label="Objekat" value={sample.type} className="border-r border-b sm:border-b-0" />
               <Stamp label="Širina × dužina" value={`${fmt(shown.dimensions.width)} × ${fmt(shown.dimensions.length)} m`} className="border-b sm:border-r sm:border-b-0" />
               <Stamp label="Osnova" value={`${Math.round(shown.dimensions.width * shown.dimensions.length)} m²`} className="border-r" />
-              <Stamp label="Orijentaciono" value={formatDin(total)} strong />
+              <Stamp label={`Okvirno, ${VAT_LABEL}`} value={formatRange(total)} strong />
             </dl>
           </figcaption>
         </figure>
@@ -242,8 +271,8 @@ export function HomePage({ onStartFrom }) {
 
       <section className="bg-white">
         <div className="mx-auto max-w-7xl px-4 py-16 md:px-6">
-          <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Od ideje do majstora</h2>
-          <ol className="mt-8 grid md:grid-cols-4">
+          <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Tri koraka do objekta</h2>
+          <ol className="mt-8 grid md:grid-cols-3">
             {STEPS.map((step, index) => (
               <li key={step.title} className="pb-8 md:pb-0">
                 <div className="tape flex h-8 items-start">
@@ -258,47 +287,62 @@ export function HomePage({ onStartFrom }) {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 py-16 md:px-6">
-        <div className="max-w-2xl">
-          <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Od ostave do magacina</h2>
-          <p className="mt-3 text-stone-600">Prevuci preko modela da ga okreneš. Svaki primer možeš da otvoriš i doradiš.</p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="max-w-2xl">
+            <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Gotovi modeli</h2>
+            <p className="mt-3 text-stone-600">Kreni od objekta koji liči na tvoj, pa ga prilagodi. Najotvaraniji su prvi.</p>
+          </div>
+          <button type="button" onClick={() => navigate('/modeli')} className="rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-700">
+            Svih {MODELS.length} modela
+          </button>
         </div>
-        <div className="mt-8 grid gap-x-5 gap-y-10 sm:grid-cols-2 xl:grid-cols-4">
-          {SAMPLES.map((entry) => (
-            <article key={entry.name}>
-              <GarageView {...viewProps(entry.scene)} orbit background={CANVAS} className="h-56 w-full overflow-hidden rounded-lg" />
-              <h3 className="font-display mt-3 text-2xl leading-tight font-bold text-stone-950">{entry.name}</h3>
-              <p className="text-[15px] text-stone-600">{entry.tag}</p>
-              <p className="mt-2 flex items-baseline justify-between gap-3 border-t border-stone-300 pt-2 text-[15px] tabular-nums">
-                <span className="text-stone-600">
-                  {fmt(entry.scene.dimensions.width)} × {fmt(entry.scene.dimensions.length)} m
-                </span>
-                <span className="font-display text-xl font-bold text-stone-950">{formatDin(priceOf(entry.scene))}</span>
-              </p>
-              <button
-                type="button"
-                onClick={() => start(entry.scene)}
-                className="mt-3 w-full rounded-lg bg-stone-900 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-stone-700"
-              >
-                Kreni od ovog
-              </button>
-            </article>
+        <div className="mt-8 grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {featured.map((model) => (
+            <ModelCard key={model.id} model={model} views={views[model.id]} onOpen={openModel} compact />
           ))}
+        </div>
+        <ShotQueue models={featured} />
+      </section>
+
+      <section className="bg-white">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-14 md:px-6 lg:grid-cols-2 lg:items-center">
+          <div>
+            <h2 className="text-4xl leading-none font-bold text-stone-950 md:text-5xl">Vidi objekat u svom dvorištu</h2>
+            <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-stone-600">
+              U konfiguratoru izaberi „Moja slika“ i stavi fotografiju svog placa u pozadinu, pa okreni objekat da legne na mesto. Na telefonu izaberi „Kamera“ i
+              postavi objekat u dvorište kroz kameru, u pravoj veličini.
+            </p>
+            <button type="button" onClick={() => navigate('/konfigurator')} className="mt-5 rounded-lg bg-stone-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-stone-700">
+              Otvori konfigurator
+            </button>
+          </div>
+          <ul className="grid gap-3 text-[15px] text-stone-700 sm:grid-cols-2">
+            {SHOWCASE.map(([title, text]) => (
+              <li key={title} className="border-t-[1.5px] border-stone-900 pt-3">
+                <strong className="font-display block text-xl text-stone-950">{title}</strong>
+                {text}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
       <section className="bg-stone-900 text-white">
         <div className="mx-auto grid max-w-7xl gap-x-12 gap-y-8 px-4 py-16 md:px-6 lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
           <div>
-            <h2 className="text-4xl leading-none font-bold md:text-5xl">Cena, posao po posao</h2>
+            <h2 className="text-4xl leading-none font-bold md:text-5xl">Cena bez iznenađenja</h2>
             <p className="mt-4 max-w-md leading-relaxed text-stone-300">
               Ovo je računica za objekat koji si podesio na vrhu strane: {sample.type.toLowerCase()} {fmt(shown.dimensions.width)} ×{' '}
               {fmt(shown.dimensions.length)} m. Svaki red je poseban upit za majstora koji radi taj deo.
             </p>
             <p className="mt-4 max-w-md text-sm leading-relaxed text-stone-400">
-              To nije ponuda majstora, već zbir materijala po stavkama. Ponuda je cena koju majstor unese kad prihvati upit.
+              To nije ponuda, već okvirna cena materijala sa PDV-om. Ispod je šta nije uračunato i koliko to okvirno košta, da na kraju ne bude iznenađenja.
             </p>
+            <div className="mt-6 rounded-xl bg-white/5 p-4 ring-1 ring-white/15">
+              <CostBox scene={shown} quote={quote} tone="dark" compact />
+            </div>
           </div>
-          <table aria-label="Orijentaciona cena po poslovima" className="w-full self-start text-left tabular-nums">
+          <table aria-label="Okvirna cena po poslovima" className="w-full self-start text-left tabular-nums">
             <tbody>
               {jobs.map((job) => (
                 <tr key={job.id} className="border-b border-white/15">
@@ -308,17 +352,17 @@ export function HomePage({ onStartFrom }) {
                   <td className="hidden w-2/5 py-2.5 sm:table-cell" aria-hidden="true">
                     <span className="block h-2 rounded-sm bg-tape" style={{ width: `${Math.max(2, (job.total / largest) * 100)}%` }} />
                   </td>
-                  <td className="font-display py-2.5 pl-4 text-right text-xl font-semibold whitespace-nowrap">{formatDin(job.total)}</td>
+                  <td className="font-display py-2.5 pl-4 text-right text-lg font-semibold whitespace-nowrap">{formatRange(job.total)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr>
                 <th scope="row" className="pt-4 text-[15px] font-medium text-stone-300">
-                  Ukupno, orijentaciono
+                  Ukupno, okvirno, {VAT_LABEL}
                 </th>
                 <td className="hidden sm:table-cell" />
-                <td className="font-display pt-4 text-right text-4xl font-bold whitespace-nowrap text-tape">{formatDin(total)}</td>
+                <td className="font-display pt-4 text-right text-2xl font-bold whitespace-nowrap text-tape sm:text-3xl">{formatRange(total)}</td>
               </tr>
             </tfoot>
           </table>
@@ -354,6 +398,10 @@ export function HomePage({ onStartFrom }) {
                 </p>
                 <p className="text-[15px] text-stone-600">{partner.city}</p>
                 <p className="mt-1 text-sm text-stone-500">{partner.packages.map(packageName).join(', ')}</p>
+                <p className="mt-1.5"><TrustBadge jobs={partner.completedJobs} verified={partner.verified} /></p>
+                <a href={`/firma/${partner.id}`} onClick={(event) => { event.preventDefault(); navigate(`/firma/${partner.id}`) }} className="mt-1 inline-block text-sm text-stone-800 underline">
+                  Profil firme
+                </a>
               </li>
             ))}
           </ul>
@@ -424,7 +472,7 @@ export function HomePage({ onStartFrom }) {
             <span className="font-display text-lg font-bold text-white">Mera</span>
             <span>Montažni objekti po meri</span>
           </span>
-          <span>Cene su orijentacione. Količine nisu statički proračun.</span>
+          <span>Cene su okvirne, sa PDV-om. Količine nisu statički proračun.</span>
         </div>
       </footer>
     </div>

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { configureMail, mailReady, sendMail } from './mailer.js'
+import { modelViews, recordModelView } from './statsDb.js'
 import {
   adminEmail,
   adminFromToken,
@@ -28,6 +29,9 @@ import {
   skillLabel,
   withdrawInquiry,
   workshopInquiries,
+  confirmInquiryDone,
+  craftsmanProfile,
+  setCraftsmanVerified,
 } from './platformDb.js'
 import {
   adminCreatePartner,
@@ -46,6 +50,9 @@ import {
   registerPartner,
   reportSale,
   savePartnerPrices,
+  confirmLeadDone,
+  publicPartner,
+  savePartnerTerms,
 } from './partnerDb.js'
 import { PACKAGES } from '../src/prices.js'
 import {
@@ -108,6 +115,41 @@ function createMiddleware(root) {
       handleAdminPartners(url, req, res, admin)
       return
     }
+    const profile = /^\/api\/profiles\/(partner|craftsman)\/([^/]+)$/.exec(url || '')
+    if (profile && req.method === 'GET') {
+      const id = decodeURIComponent(profile[2])
+      const found = profile[1] === 'partner' ? publicPartner(id) : craftsmanProfile(id)
+      if (!found) return sendJson(res, 404, { error: 'Profil nije pronađen.' })
+      sendJson(res, 200, { profile: found })
+      return
+    }
+    const leadDone = /^\/api\/customer\/leads\/([^/]+)\/done$/.exec(url || '')
+    if (leadDone && req.method === 'POST') {
+      const user = currentUser(req)
+      if (!user) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      const result = confirmLeadDone(user.id, decodeURIComponent(leadDone[1]))
+      sendJson(res, result.error ? 400 : 200, result)
+      return
+    }
+    const inquiryDone = /^\/api\/customer\/inquiries\/([^/]+)\/done$/.exec(url || '')
+    if (inquiryDone && req.method === 'POST') {
+      const user = currentUser(req)
+      if (!user) return sendJson(res, 401, { error: 'Prijava je istekla.' })
+      const result = confirmInquiryDone(user.id, decodeURIComponent(inquiryDone[1]))
+      sendJson(res, result.error ? 400 : 200, result)
+      return
+    }
+    if (url === '/api/models/views' && req.method === 'GET') {
+      sendJson(res, 200, { views: modelViews(root) })
+      return
+    }
+    if (url === '/api/models/views' && req.method === 'POST') {
+      handleJson(req, res, (raw) => {
+        const result = recordModelView(root, raw.id, raw.visitor)
+        sendJson(res, result.error ? 400 : 200, result)
+      })
+      return
+    }
     if (url === '/api/offers' && req.method === 'GET') {
       sendJson(res, 200, { partners: publicOffers() })
       return
@@ -155,6 +197,13 @@ function createMiddleware(root) {
       if (!partner) return sendJson(res, 401, { error: 'Prijava je istekla.' })
       if (url === '/api/partner/me' && req.method === 'GET') {
         sendJson(res, 200, { partner, ...partnerDashboard(partner.id) })
+        return
+      }
+      if (url === '/api/partner/terms' && req.method === 'PUT') {
+        handleJson(req, res, (raw) => {
+          const result = savePartnerTerms(partner.id, raw)
+          sendJson(res, result.error ? 400 : 200, result)
+        })
         return
       }
       if (url === '/api/partner/prices' && req.method === 'PUT') {
@@ -247,7 +296,7 @@ function createMiddleware(root) {
       if (!admin) return sendJson(res, 401, { error: 'Prijava je istekla.' })
       const id = decodeURIComponent(url.slice('/api/admin/craftsmen/'.length))
       handleJson(req, res, (raw) => {
-        const result = setCraftsmanCommission(id, raw.commissionPct)
+        const result = Object.hasOwn(raw, 'verified') ? setCraftsmanVerified(id, raw) : setCraftsmanCommission(id, raw.commissionPct)
         sendJson(res, result.error ? 400 : 200, result)
       })
       return

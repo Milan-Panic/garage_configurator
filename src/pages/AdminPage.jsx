@@ -93,6 +93,17 @@ export function AdminPage() {
     setCraftsmen(payload.craftsmen || [])
   }
 
+  async function saveVerified(id, verified, pib) {
+    const response = await fetch(`/api/admin/craftsmen/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ verified, pib }),
+    })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.error || 'Provera nije sačuvana.')
+    setCraftsmen(payload.craftsmen || [])
+  }
+
   const pending = inquiries.filter((item) => item.status === 'pending')
   const feeSum = fees.reduce((sum, item) => sum + (item.feeAmount || 0), 0)
 
@@ -158,7 +169,7 @@ export function AdminPage() {
               </p>
               <div className="divide-y divide-stone-200 rounded-lg border border-stone-200 bg-white">
                 {craftsmen.map((item) => (
-                  <CommissionRow key={item.id} item={item} onSave={saveCommission} />
+                  <CommissionRow key={item.id} item={item} onSave={saveCommission} onVerify={saveVerified} />
                 ))}
               </div>
             </section>
@@ -202,8 +213,9 @@ export function AdminPage() {
   )
 }
 
-function CommissionRow({ item, onSave }) {
+function CommissionRow({ item, onSave, onVerify }) {
   const [value, setValue] = useState(String(item.commissionPct))
+  const [pib, setPib] = useState(item.pib || '')
   const [note, setNote] = useState('')
   const changed = Number(value.replace(',', '.')) !== item.commissionPct
 
@@ -220,8 +232,17 @@ function CommissionRow({ item, onSave }) {
     >
       <span className="min-w-0 flex-1">
         <span className="font-medium text-stone-950">{item.shop}</span>
-        <span className="text-stone-600"> · {item.profession}, {item.city}</span>
+        <span className="text-stone-600"> · {item.profession}, {item.city} · {item.completedJobs || 0} završenih poslova</span>
       </span>
+      <label className="flex items-center gap-1.5 text-xs">
+        <input value={pib} onChange={(event) => setPib(event.target.value)} placeholder="PIB" inputMode="numeric" className="w-28 rounded-lg border border-stone-300 px-2 py-1 tabular-nums" />
+        <input
+          type="checkbox"
+          checked={Boolean(item.verified)}
+          onChange={(event) => onVerify(item.id, event.target.checked, pib).then(() => setNote(event.target.checked ? 'PIB proveren' : 'Provera skinuta')).catch((reason) => setNote(reason.message))}
+        />
+        PIB proveren
+      </label>
       <label className="flex items-center gap-1.5">
         <span className="sr-only">Provizija za {item.shop}, u procentima</span>
         <input value={value} onChange={(event) => setValue(event.target.value)} inputMode="decimal" className="w-16 rounded-lg border border-stone-300 px-2 py-1 text-right tabular-nums" />

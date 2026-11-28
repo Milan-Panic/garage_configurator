@@ -14,6 +14,8 @@ import { accessLabel, activeSubscription, formatDate, projectAccess } from '../b
 import { useBilling } from '../billing/paymentService'
 import { navigate } from '../nav'
 import { formatDin, packageName } from '../prices'
+import { formatRange } from '../pricing'
+import { ConfirmDone } from '../components/ConfirmDone'
 import { formatSavedAt } from '../projects'
 import { skillName } from './craftsmen'
 
@@ -240,10 +242,11 @@ function InquiryRow({ item, onWithdraw, showProject = false }) {
       <p className="mt-1 text-stone-600">
         {showProject && item.projectName ? `${item.projectName} · ` : ''}
         Poslato {formatDate(new Date(item.createdAt).getTime())}
-        {item.orientationTotal > 0 ? ` · orijentaciono ${formatDin(item.orientationTotal)}` : ''}
+        {item.orientationTotal > 0 ? ` · okvirno ${formatRange(item.orientationTotal)}` : ''}
         {item.craftsmanPrice != null ? ` · cena majstora ${formatDin(item.craftsmanPrice)}` : ''}
       </p>
       {item.craftsman?.phone && <p className="mt-1 text-stone-800">Telefon majstora: {item.craftsman.phone}</p>}
+      <ConfirmDone kind="inquiry" item={item} />
       {(item.canWithdraw || item.canSwitch) && (
         <button
           type="button"
@@ -280,6 +283,7 @@ function LeadRow({ lead, showProject = false }) {
         Kod {lead.code} · {formatDin(lead.offerTotal)} po cenovniku firme
       </p>
       {lead.partner?.phone && <p className="mt-1 text-stone-800">Telefon firme: {lead.partner.phone}</p>}
+      <ConfirmDone kind="lead" item={lead} />
     </div>
   )
 }

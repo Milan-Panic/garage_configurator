@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 export const ROUTES = [
   { path: '/', label: 'Početna', main: true },
+  { path: '/modeli', label: 'Gotovi modeli', main: true },
   { path: '/konfigurator', label: 'Konfigurator', main: true },
   { path: '/majstori', label: 'Majstori', main: true },
   { path: '/dozvole', label: 'Dozvole', main: true },

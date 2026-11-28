@@ -9,7 +9,7 @@ export const WINDOW_TYPES = [
   { id: 'glassblock', name: 'Staklena prizma', detail: 'Zidana, ne otvara se', addLabel: 'Dodaj staklene prizme', width: 0.8, height: 0.8, sill: 1.2 },
 ]
 
-export const FURNITURE_GROUPS = ['Radni prostor', 'Servis', 'Odlaganje', 'Vozila i bašta', 'Kućna tehnika', 'Kancelarija i odmor', 'Sanitarije i grejanje']
+export const FURNITURE_GROUPS = ['Radni prostor', 'Servis', 'Odlaganje', 'Vozila i bašta', 'Kućna tehnika', 'Kancelarija i odmor', 'Boravak i hobi', 'Teretana', 'Sanitarije i grejanje']
 
 export const FURNITURE_TYPES = [
   {
@@ -375,6 +375,19 @@ export const FURNITURE_TYPES = [
     depthRange: [0.4, 0.7],
     heightRange: [0.7, 1.1],
   },
+  ...[
+    ['table', 'Sto', 'Dodaj sto', [1.6, 0.9, 0.75], [[0.8, 3], [0.6, 1.2], [0.7, 0.8]]],
+    ['dinchair', 'Stolica sa naslonom', 'Dodaj stolicu sa naslonom', [0.45, 0.48, 0.9], [[0.4, 0.55], [0.42, 0.55], [0.85, 1]]],
+    ['armchair', 'Fotelja', 'Dodaj fotelju', [0.85, 0.85, 0.85], [[0.7, 1.1], [0.75, 1], [0.75, 1]]],
+    ['tv', 'TV na komodi', 'Dodaj TV na komodi', [1.4, 0.4, 1.3], [[0.9, 2.2], [0.3, 0.5], [1, 1.6]]],
+    ['fridge', 'Frižider', 'Dodaj frižider', [0.6, 0.65, 1.85], [[0.5, 0.9], [0.55, 0.75], [0.85, 2]]],
+    ['treadmill', 'Traka za trčanje', 'Dodaj traku za trčanje', [0.8, 1.8, 1.4], [[0.7, 0.95], [1.5, 2.1], [1.2, 1.6]]],
+    ['weightbench', 'Klupa i stalak za tegove', 'Dodaj klupu za tegove', [1.6, 1.6, 1.6], [[1.2, 2.2], [1.3, 2], [1.3, 2.1]]],
+    ['billiard', 'Bilijar', 'Dodaj bilijar', [2.3, 1.3, 0.8], [[1.8, 2.8], [1, 1.6], [0.75, 0.85]]],
+    ['pingpong', 'Stoni tenis', 'Dodaj sto za stoni tenis', [2.74, 1.525, 0.76], [[2.2, 2.8], [1.2, 1.6], [0.7, 0.8]]],
+    ['grill', 'Roštilj', 'Dodaj roštilj', [1.1, 0.55, 1], [[0.6, 1.6], [0.4, 0.7], [0.85, 1.2]]],
+    ['boxes', 'Kutije', 'Dodaj kutije', [1, 0.6, 1], [[0.5, 2], [0.4, 1], [0.4, 1.6]]],
+  ].map(([id, name, addLabel, [width, depth, height], [widthRange, depthRange, heightRange]]) => ({ id, name, addLabel, width, depth, height, widthRange, depthRange, heightRange })),
 ]
 
 const FURNITURE_GROUP_OF = {
@@ -411,6 +424,17 @@ const FURNITURE_GROUP_OF = {
   waterheater: 'Sanitarije i grejanje',
   boiler: 'Sanitarije i grejanje',
   stove: 'Sanitarije i grejanje',
+  table: 'Boravak i hobi',
+  dinchair: 'Boravak i hobi',
+  armchair: 'Boravak i hobi',
+  tv: 'Boravak i hobi',
+  billiard: 'Boravak i hobi',
+  pingpong: 'Boravak i hobi',
+  grill: 'Vozila i bašta',
+  fridge: 'Kućna tehnika',
+  boxes: 'Odlaganje',
+  treadmill: 'Teretana',
+  weightbench: 'Teretana',
 }
 
 export function furnitureGroup(id) {

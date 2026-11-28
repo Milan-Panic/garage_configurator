@@ -18,6 +18,9 @@ const EMPTY = {
   monthlyFee: 0,
   commissionPct: 0,
   password: '',
+  pib: '',
+  mb: '',
+  verified: false,
 }
 
 export function AdminPartners({ token }) {
@@ -96,6 +99,8 @@ export function AdminPartners({ token }) {
             <summary className="cursor-pointer font-medium text-stone-950">
               {partner.name} · {partner.city} · {statusText(partner.status)} · {Object.keys(partner.prices).length} cena
               {partner.sponsored ? ' · sponzorisano' : ''}
+              {partner.verified ? ' · PIB proveren' : ''}
+              {` · ${partner.completedJobs || 0} završenih poslova`}
             </summary>
             <p className="mt-2 text-stone-600">{partner.packages.map(packageName).join(' · ')}</p>
             <div className="mt-4 grid gap-6">
@@ -215,7 +220,22 @@ function PartnerForm({ initial, creating = false, submitLabel, onSubmit }) {
         <Field label="Imejl" type="email" value={values.email} onChange={set('email')} required />
         <Field label="Sajt" value={values.website} onChange={set('website')} />
         <Field label="Dostava" value={values.delivery} onChange={set('delivery')} />
+        <Field label="PIB (9 cifara)" value={values.pib} onChange={set('pib')} inputMode="numeric" />
+        <Field label="Matični broj (8 cifara)" value={values.mb} onChange={set('mb')} inputMode="numeric" />
       </div>
+      {!creating && (
+        <label className="flex items-start gap-2">
+          <input type="checkbox" className="mt-1" checked={Boolean(values.verified)} onChange={(event) => setValues((current) => ({ ...current, verified: event.target.checked }))} />
+          <span>
+            PIB proveren u APR-u. Kupac vidi oznaku „PIB proveren“.{' '}
+            {values.pib && (
+              <a href="https://pretraga.apr.gov.rs/" target="_blank" rel="noreferrer" className="underline">
+                Pretraga APR
+              </a>
+            )}
+          </span>
+        </label>
+      )}
       <fieldset>
         <legend className="mb-1 font-medium text-stone-800">Paketi</legend>
         <div className="flex flex-wrap gap-x-4 gap-y-1">

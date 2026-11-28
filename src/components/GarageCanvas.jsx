@@ -2,10 +2,12 @@ import { OrbitControls } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { Box, Camera, Eye, ImagePlus, Maximize2, ScanEye, SquareDashed, Trees, X } from 'lucide-react'
+import { Box, Camera, Eye, EyeOff, ImagePlus, Lock, LockOpen, Maximize2, ScanEye, Smartphone, SquareDashed, Trees, X } from 'lucide-react'
+import { ArPanel } from './ArPanel'
 import { formatMeters } from '../config'
 import { roofGeometry } from '../roof'
 import { Car } from './Car'
+import { DragLock } from './drag'
 import { findCollisions } from '../collide'
 import { SceneExtras } from './Extras'
 import { FurniturePiece } from './Furniture'
@@ -51,6 +53,11 @@ export function GarageCanvas({
   const rise = roofGeometry(dimensions, roof).rise
   const [xray, setXray] = useState(false)
   const [openTop, setOpenTop] = useState(false)
+  // Bez opreme: sakriva nameštaj i auto, ostaje sam objekat.
+  const [bare, setBare] = useState(false)
+  // Zaključan raspored: predmeti, prozori i vrata se ne pomeraju slučajnim prevlačenjem.
+  const [locked, setLocked] = useState(false)
+  const [camera, setCamera] = useState(false)
   const [yard, setYard] = useState(false)
   // Kupčeva fotografija placa kao pozadina. Ostaje samo u ovom pregledaču.
   const [photo, setPhoto] = useState(null)
@@ -117,6 +124,7 @@ export function GarageCanvas({
         }}
         onPointerMissed={() => onSelect(null)}
       >
+        <DragLock.Provider value={locked}>
         {!photo && !yard && <color attach="background" args={['#dbe4ec']} />}
         {!photo && !yard && <fog attach="fog" args={['#dbe4ec', 34, 90]} />}
         {!photo && yard && <Yard width={width * units} length={length} offsetX={offsetX} doorWall={door?.style === 'none' ? 'front' : door?.wall} />}
@@ -147,6 +155,8 @@ export function GarageCanvas({
             </mesh>
           )}
         </group>
+        {/* Sam objekat, bez tla i opreme: ovaj deo ide u kameru (AR). */}
+        <group name="mera-building">
         <Garage
           width={width}
           length={length}
@@ -195,7 +205,8 @@ export function GarageCanvas({
             onGestureEnd={onGestureEnd}
           />
         ))}
-        {furniture.map((item) => (
+        </group>
+        {!bare && furniture.map((item) => (
           <FurniturePiece
             key={item.id}
             item={item}
@@ -207,7 +218,7 @@ export function GarageCanvas({
             onGestureEnd={onGestureEnd}
           />
         ))}
-        {car && (
+        {!bare && car && (
           <Car
             item={car}
             selected={selected?.kind === 'car'}
@@ -218,6 +229,7 @@ export function GarageCanvas({
             onGestureEnd={onGestureEnd}
           />
         )}
+        </DragLock.Provider>
       </Canvas>
 
       <div className="pointer-events-none absolute inset-x-3 top-3 flex flex-wrap items-start justify-between gap-2">
@@ -263,6 +275,30 @@ export function GarageCanvas({
           </button>
           <button
             type="button"
+            aria-pressed={bare}
+            onClick={() => setBare((value) => !value)}
+            title="Sakrij nameštaj, opremu i auto, da se vidi samo objekat"
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+              bare ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            <EyeOff size={14} />
+            Bez opreme
+          </button>
+          <button
+            type="button"
+            aria-pressed={locked}
+            onClick={() => setLocked((value) => !value)}
+            title={locked ? 'Otključaj raspored: predmeti, prozori i vrata ponovo mogu da se prevlače' : 'Zaključaj raspored da slučajno ne pomeriš prozor, vrata, auto ili nameštaj'}
+            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+              locked ? 'bg-accent-500 text-white' : 'text-stone-700 hover:bg-stone-100'
+            }`}
+          >
+            {locked ? <Lock size={14} /> : <LockOpen size={14} />}
+            {locked ? 'Zaključano' : 'Zaključaj'}
+          </button>
+          <button
+            type="button"
             aria-pressed={yard && !photo}
             onClick={() => {
               setPhoto(null)
@@ -302,6 +338,15 @@ export function GarageCanvas({
           )}
           <button
             type="button"
+            onClick={() => setCamera(true)}
+            title="Postavi objekat u dvorište kroz kameru telefona, u pravoj veličini"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-100"
+          >
+            <Smartphone size={14} />
+            Kamera
+          </button>
+          <button
+            type="button"
             onClick={snapshot}
             title="Sačuvaj sliku ovog pogleda"
             className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-stone-700 transition hover:bg-stone-100"
@@ -312,6 +357,7 @@ export function GarageCanvas({
         </div>
       </div>
 
+      {camera && <ArPanel getBuilding={() => three.current?.scene.getObjectByName('mera-building')} onClose={() => setCamera(false)} />}
       <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-xl border border-white/60 bg-white/85 px-3 py-2 text-sm text-stone-700 shadow-sm backdrop-blur">
         <Maximize2 size={16} className="text-stone-400" aria-hidden="true" />
         <span>
@@ -326,7 +372,7 @@ export function GarageCanvas({
       </div>
       <div className="pointer-events-none absolute right-3 bottom-3 hidden items-center gap-2 rounded-xl border border-white/60 bg-white/85 px-3 py-2 text-xs text-stone-500 shadow-sm backdrop-blur lg:flex">
         <Box size={14} aria-hidden="true" />
-        Prevuci prazno da rotiraš · predmet da ga pomeriš · Del briše · Ctrl+Z vraća
+        {locked ? 'Raspored je zaključan · prevuci da rotiraš' : 'Prevuci prazno da rotiraš · predmet da ga pomeriš · Del briše · Ctrl+Z vraća'}
       </div>
     </div>
   )

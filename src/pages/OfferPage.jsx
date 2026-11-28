@@ -13,6 +13,8 @@ import { LogoMark } from '../components/SiteHeader'
 import { INSULATION_OPTIONS, findRal, sceneMaterials } from '../materials'
 import { navigate } from '../nav'
 import { formatDin, orientationQuote, quoteItems, quoteTotal } from '../prices'
+import { VAT_LABEL, formatRange } from '../pricing'
+import { CostBox } from '../components/CostBox'
 import { roofGeometry } from '../roof'
 import { roomKind } from '../rooms'
 import { WIND_OPTIONS, placeName } from '../site'
@@ -203,10 +205,13 @@ export function OfferPage({ scene, projectName, estimate, catalog, billing }) {
             ))}
           </dl>
           <div className="rounded-xl bg-stone-900 px-5 py-4 text-right text-white">
-            <p className="text-[11px] tracking-wide text-stone-400 uppercase">Orijentaciono, materijal</p>
-            <p className="text-2xl font-semibold tabular-nums">{formatDin(total)}</p>
-            <p className="text-xs text-stone-400">oko {formatDin(total / Math.max(1, footprint))} po m²</p>
+            <p className="text-[11px] tracking-wide text-stone-400 uppercase">Okvirno, {VAT_LABEL}</p>
+            <p className="text-2xl font-semibold tabular-nums">{formatRange(total)}</p>
+            <p className="text-xs text-stone-400">okvirno {formatRange(total / Math.max(1, footprint))} po m²</p>
           </div>
+        </div>
+        <div className="mt-4 rounded-xl border border-stone-200 p-3">
+          <CostBox scene={scene} quote={quote} />
         </div>
       </Page>
 

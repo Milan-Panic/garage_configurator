@@ -4,6 +4,10 @@ import { GarageCanvas } from './components/GarageCanvas'
 import { SiteHeader } from './components/SiteHeader'
 import { navigate, usePath } from './nav'
 import { HomePage } from './pages/HomePage'
+import { ModelsPage } from './pages/ModelsPage'
+import { StartQuiz } from './components/StartQuiz'
+import { ProfilePage } from './pages/ProfilePage'
+import { recordModelView } from './views'
 import { CraftsmenPage } from './pages/CraftsmenPage'
 import { PricesPage } from './pages/PricesPage'
 import { WorkshopPage } from './pages/WorkshopPage'
@@ -161,9 +165,19 @@ function StatusScreen({ message }) {
   )
 }
 
+const QUIZ_KEY = 'mera-quiz-done'
+
 function Configurator({ boot }) {
   const { scene, canUndo, canRedo, commit, transient, endGesture, undo, redo, replace } = useHistory(boot.scene)
   const [selected, setSelected] = useState(null)
+  // Kviz se sam otvara samo prvi put, na praznom crtežu.
+  const [quizOpen, setQuizOpen] = useState(() => {
+    try {
+      return !localStorage.getItem(QUIZ_KEY) && scenesEqual(boot.scene, initialScene)
+    } catch {
+      return false
+    }
+  })
   const [library, setLibrary] = useState(boot.library)
   const [projectName, setProjectName] = useState(boot.name)
   const [saveError, setSaveError] = useState('')
@@ -197,6 +211,7 @@ function Configurator({ boot }) {
   const total = quoteTotal(quote)
   const path = usePath()
   const resetMatch = /^\/nalog\/nova-lozinka\/([a-f0-9]{48})$/.exec(path)
+  const profileMatch = /^\/(firma|majstor)\/([^/]+)$/.exec(path)
   const account = useAccount()
   const userId = account.user?.id ?? null
   // Za koji nalog je biblioteka učitana; kad se promeni prijava, biblioteka se učitava ponovo.
@@ -411,6 +426,15 @@ function Configurator({ boot }) {
     setProjectName('')
     storeLibrary({ ...libraryRef.current, activeId: null })
     navigate('/konfigurator')
+  }
+
+  function closeQuiz() {
+    try {
+      localStorage.setItem(QUIZ_KEY, '1')
+    } catch {
+      // Bez localStorage kviz se pokaže opet sledeći put.
+    }
+    setQuizOpen(false)
   }
 
   function deleteProject(id) {
@@ -734,7 +758,7 @@ function Configurator({ boot }) {
     onUnlock: unlockFromSubscription,
   }
 
-  const pages = ['/konfigurator', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda', '/paketi', '/nalog']
+  const pages = ['/konfigurator', '/modeli', '/majstori', '/dozvole', '/cene', '/radionica', '/partner', '/admin', '/ponuda', '/paketi', '/nalog']
 
   return (
     <>
@@ -750,12 +774,24 @@ function Configurator({ boot }) {
       {resetMatch && <ResetPasswordPage token={resetMatch[1]} />}
       {path === '/paketi' && <PlansPage scene={fullScene} projectName={projectNameOrDefault(projectName)} billing={billing} />}
       {path === '/dozvole' && <PermitsPage />}
+      {path === '/modeli' && <ModelsPage onStartFrom={startFrom} onQuiz={() => setQuizOpen(true)} />}
       {path === '/ponuda' && <OfferPage scene={fullScene} projectName={projectNameOrDefault(projectName)} estimate={estimate} catalog={catalog} billing={billing} />}
       {path === '/cene' && <PricesPage />}
       {path === '/radionica' && <WorkshopPage />}
       {path === '/partner' && <PartnerPage />}
       {path === '/admin' && <AdminPage />}
-      {!pages.includes(path) && !resetMatch && <HomePage onStartFrom={startFrom} />}
+      {profileMatch && <ProfilePage key={path} kind={profileMatch[1] === 'firma' ? 'partner' : 'craftsman'} id={decodeURIComponent(profileMatch[2])} />}
+      {!pages.includes(path) && !resetMatch && !profileMatch && <HomePage onStartFrom={startFrom} onQuiz={() => setQuizOpen(true)} />}
+      {quizOpen && (
+        <StartQuiz
+          onClose={closeQuiz}
+          onPick={(source, model) => {
+            closeQuiz()
+            recordModelView(model.id)
+            startFrom(source)
+          }}
+        />
+      )}
       {path === '/konfigurator' && (
         <div className="flex h-full flex-col md:flex-row">
           <ControlPanel
