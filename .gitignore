@@ -29,3 +29,6 @@ dist-ssr
 research_notes/
 reports/
 *.mp4
+
+# Lokalna podesavanja ovog racunara
+config.js
