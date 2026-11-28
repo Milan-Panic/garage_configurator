@@ -6,6 +6,11 @@ import { buildEstimate } from '../estimate'
 import { sceneMaterials } from '../materials'
 import { applyOffers, packageOffers, useOfferPartners } from '../partners'
 import { formatDin, mergePrices, orientationQuote, packageName, quoteItems } from '../prices'
+import { formatRange } from '../pricing'
+import { TrustBadge } from '../components/TrustBadge'
+import { ConfirmDone } from '../components/ConfirmDone'
+import { badgeFor } from '../badges'
+import { navigate } from '../nav'
 import { useAccount } from '../account'
 import { jobsFor, skillName } from './craftsmen'
 
@@ -291,7 +296,7 @@ export function CraftsmenPage({ scene, projectName, billing, onSaveProject }) {
                   <span>
                     <span className="font-medium text-stone-950">{job.title}</span>
                     <span className="mt-1 block text-stone-600">{job.detail}</span>
-                    {money && <span className="mt-1 block text-stone-800">Orijentaciono {formatDin(money.total)}</span>}
+                    {money && <span className="mt-1 block text-stone-800">Okvirno {formatRange(money.total)}</span>}
                   </span>
                 </label>
                 <label className="block text-sm">
@@ -304,10 +309,23 @@ export function CraftsmenPage({ scene, projectName, billing, onSaveProject }) {
                     {options.map((entry) => (
                       <option key={entry.id} value={entry.id}>
                         {entry.profession} · {entry.shop}, {entry.city}
+                        {badgeFor(entry.completedJobs) ? ` · ${badgeFor(entry.completedJobs).name}, ${entry.completedJobs} poslova` : ''}
                       </option>
                     ))}
                   </select>
                 </label>
+                {(() => {
+                  const pick = options.find((entry) => entry.id === chosen[job.skill])
+                  if (!pick) return null
+                  return (
+                    <p className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                      <TrustBadge jobs={pick.completedJobs} verified={pick.verified} />
+                      <a href={`/majstor/${pick.id}`} onClick={(event) => { event.preventDefault(); navigate(`/majstor/${pick.id}`) }} className="text-stone-700 underline">
+                        Profil
+                      </a>
+                    </p>
+                  )
+                })()}
               </fieldset>
             )
           })}
@@ -325,6 +343,7 @@ export function CraftsmenPage({ scene, projectName, billing, onSaveProject }) {
                   <span className="mt-1 block text-stone-800">
                     {formatDin(entry.offer.total)} po cenovniku firme, {entry.offer.covered} od {entry.offer.articles} artikala
                   </span>
+                  <span className="mt-1 block"><TrustBadge jobs={entry.offer.partner.completedJobs} verified={entry.offer.partner.verified} /></span>
                   <span className="mt-1 block text-stone-600">Firma potvrđuje konačnu cenu i dostavu kad dobije upit.</span>
                 </span>
               </label>
@@ -362,6 +381,7 @@ export function CraftsmenPage({ scene, projectName, billing, onSaveProject }) {
                 <p className="mt-1 text-stone-600">Kod ponude {lead.code} · {formatDin(lead.offerTotal)} po cenovniku firme</p>
                 <p className="mt-1 text-stone-600">{leadLabel(lead.status)}</p>
                 {lead.partner?.phone && <p className="mt-1 text-stone-800">Telefon firme: {lead.partner.phone}</p>}
+                <ConfirmDone kind="lead" item={lead} />
               </article>
             ))}
           </section>
@@ -395,7 +415,7 @@ function InquiryBoard({ inquiries, onWithdraw }) {
             {skillName(item.skill)} · {item.craftsman?.shop}, {item.craftsman?.city}
           </p>
           <p className="mt-1 text-stone-600">{statusLabel(item.status)}</p>
-          {item.orientationTotal > 0 && <p className="mt-1 text-stone-600">Orijentacija {formatDin(item.orientationTotal)}</p>}
+          {item.orientationTotal > 0 && <p className="mt-1 text-stone-600">Okvirno {formatRange(item.orientationTotal)}</p>}
           {item.craftsmanPrice != null && (
             <p className="mt-2 text-stone-800">
               Cena majstora za ovaj posao: {formatDin(item.craftsmanPrice)}.
@@ -422,6 +442,7 @@ function InquiryBoard({ inquiries, onWithdraw }) {
               Kontakt je otvoren. {item.craftsman?.profession} iz {item.craftsman?.shop}: {item.craftsman.phone}. Cena se plaća direktno majstoru.
             </p>
           )}
+          <ConfirmDone kind="inquiry" item={item} />
         </article>
       ))}
       {problem && <p className="text-sm text-red-700">{problem}</p>}

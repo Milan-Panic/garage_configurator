@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DEFAULT_PRICES, PACKAGES } from './prices'
+import { vatFactor } from './badges'
 
 const PACK_OF = new Map(DEFAULT_PRICES.map((item) => [item.id, item.pack]))
 
@@ -25,8 +26,9 @@ function buildOffer(partner, items) {
   let total = 0
   const missing = []
   const seen = new Set()
+  const vat = vatFactor(partner)
   items.forEach((item) => {
-    const price = Number(partner.prices?.[item.priceId])
+    const price = Number(partner.prices?.[item.priceId]) * vat
     if (price > 0) total += Math.round(item.quantity * price)
     else if (!seen.has(item.priceId)) {
       seen.add(item.priceId)
@@ -65,7 +67,7 @@ export function applyOffers(catalog, partners, selected) {
   if (chosen.length === 0) return catalog
   return catalog.map((item) => {
     const partner = chosen.find(([pack]) => pack === item.pack)?.[1]
-    const price = Number(partner?.prices?.[item.id])
+    const price = Number(partner?.prices?.[item.id]) * vatFactor(partner)
     return price > 0 ? { ...item, price } : item
   })
 }

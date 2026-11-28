@@ -26,7 +26,18 @@ const GRADNJA = {
   url: 'https://www.gradnja.rs/kljucne-izmene-zakon-o-planiranju-i-izgradnji/',
 }
 
-const SOURCES = [LAW, RULEBOOK, ARTPROING, N1, GRADNJA]
+const MINISTRY = {
+  label: 'Ministarstvo građevinarstva, saobraćaja i infrastrukture',
+  detail: 'Zvanični sajt: propisi, pravilnici i obrasci za izgradnju.',
+  url: 'https://www.mgsi.gov.rs/',
+}
+const CEOP = {
+  label: 'Elektronske dozvole (CEOP)',
+  detail: 'Zvanični portal preko kog se predaje zahtev za rešenje iz člana 145 i za građevinsku dozvolu.',
+  url: 'https://ceop.apr.gov.rs/eregistrationportal/',
+}
+
+const SOURCES = [LAW, RULEBOOK, MINISTRY, CEOP, ARTPROING, N1, GRADNJA]
 
 const CASES = [
   {

@@ -112,6 +112,11 @@ export function openPlatform(root) {
   ensureColumn('inquiries', 'rejected_at', 'TEXT')
   // Provizija je dogovor sa svakim majstorom posebno. Kupac je ne vidi i ne plaća.
   ensureColumn('craftsmen', 'commission_pct', 'REAL NOT NULL DEFAULT 0')
+  // Završen posao potvrđuje kupac; samo takvi poslovi se broje za bedževe.
+  ensureColumn('inquiries', 'completed_at', 'TEXT')
+  ensureColumn('craftsmen', 'pib', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn('craftsmen', 'verified_at', 'TEXT')
+  ensureColumn('craftsmen', 'joined_at', 'TEXT')
   seedCraftsmen()
   seedAdmin()
   openPartners(database, { hashPassword, checkPassword })
@@ -164,11 +169,36 @@ export function skillLabel(id) {
 }
 
 export function listCraftsmen() {
-  return database.prepare('SELECT id, profession, shop, city, bio FROM craftsmen ORDER BY city, shop').all().map((row) => ({
-    ...row,
-    does: row.bio,
-    skills: skillsOf(row.id),
-  }))
+  return database.prepare('SELECT id FROM craftsmen ORDER BY city, shop').all().map((row) => publicCraftsman(row.id))
+}
+
+function completedJobs(id) {
+  return database.prepare('SELECT COUNT(*) AS count FROM inquiries WHERE craftsman_id = ? AND completed_at IS NOT NULL').get(id).count
+}
+
+export function craftsmanProfile(id) {
+  return publicCraftsman(clean(id, 80))
+}
+
+// Kupac potvrđuje da je posao završen. Tek tada se broji majstoru.
+export function confirmInquiryDone(customerKey, id) {
+  const row = database.prepare('SELECT * FROM inquiries WHERE id = ? AND customer_key = ?').get(clean(id, 90), clean(customerKey, 80))
+  if (!row) return { error: 'Upit nije pronađen.' }
+  if (row.status !== 'accepted' && row.status !== 'paid') return { error: 'Završen posao se potvrđuje tek kad majstor prihvati upit.' }
+  if (row.completed_at) return { error: 'Posao je već potvrđen.' }
+  database.prepare('UPDATE inquiries SET completed_at = ? WHERE id = ?').run(new Date().toISOString(), row.id)
+  return { inquiry: presentInquiry(database.prepare('SELECT * FROM inquiries WHERE id = ?').get(row.id), 'customer') }
+}
+
+// Oznaku „PIB proveren“ uključuje administrator posle provere u APR-u.
+export function setCraftsmanVerified(id, input) {
+  const row = database.prepare('SELECT verified_at FROM craftsmen WHERE id = ?').get(clean(id, 80))
+  if (!row) return { error: 'Majstor nije pronađen.' }
+  const pib = clean(input.pib, 9).replace(/\D/g, '')
+  if (pib && pib.length !== 9) return { error: 'PIB ima 9 cifara.' }
+  const verifiedAt = input.verified ? row.verified_at || new Date().toISOString() : null
+  database.prepare('UPDATE craftsmen SET pib = ?, verified_at = ? WHERE id = ?').run(pib, verifiedAt, clean(id, 80))
+  return { craftsmen: listCraftsmanTerms() }
 }
 
 export function registerCraftsman(input) {
@@ -186,8 +216,8 @@ export function registerCraftsman(input) {
   if (existing) return { error: 'Nalog sa tim imejlom već postoji.' }
   const id = `majstor-${Date.now().toString(36)}`
   database.prepare(`
-    INSERT INTO craftsmen (id, profession, shop, city, phone, email, password_hash, bio)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO craftsmen (id, profession, shop, city, phone, email, password_hash, bio, joined_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     clean(input.profession, 80),
@@ -197,6 +227,7 @@ export function registerCraftsman(input) {
     email,
     hashPassword(password),
     clean(input.bio, 400) || 'Radi poslove označene skilovima.',
+    new Date().toISOString(),
   )
   const insertSkill = database.prepare('INSERT INTO craftsman_skills (craftsman_id, skill) VALUES (?, ?)')
   skills.forEach((item) => insertSkill.run(id, item))
@@ -286,7 +317,7 @@ export function customerInquiries(customerKey) {
 }
 
 export function withdrawInquiry(customerKey, id) {
-  const row = database.prepare('SELECT * FROM inquiries WHERE id = ? AND customer_key = ?').get(id, clean(customerKey, 80))
+  const row = database.prepare('SELECT * FROM inquiries WHERE id = ? AND customer_key = ?').get(clean(id, 90), clean(customerKey, 80))
   if (!row) return { error: 'Upit nije pronađen.' }
   if (row.status === 'pending') {
     database.prepare(`UPDATE inquiries SET status = 'withdrawn' WHERE id = ?`).run(id)
@@ -334,13 +365,16 @@ export function listAdminInquiries() {
 
 // Majstori sa dogovorenom provizijom, za admina.
 export function listCraftsmanTerms() {
-  return database.prepare('SELECT id, profession, shop, city, email, commission_pct FROM craftsmen ORDER BY city, shop').all().map((row) => ({
+  return database.prepare('SELECT id, profession, shop, city, email, commission_pct, pib, verified_at FROM craftsmen ORDER BY city, shop').all().map((row) => ({
     id: row.id,
     profession: row.profession,
     shop: row.shop,
     city: row.city,
     email: row.email,
     commissionPct: row.commission_pct,
+    pib: row.pib || '',
+    verified: Boolean(row.verified_at),
+    completedJobs: completedJobs(row.id),
   }))
 }
 
@@ -449,7 +483,9 @@ function presentInquiry(row, role) {
       email: role === 'admin' ? craftsman?.email : undefined,
     },
   }
+  view.completedAt = row.completed_at || null
   if (role === 'customer') {
+    view.canConfirm = open && !row.completed_at
     view.canWithdraw = row.status === 'pending'
     view.canSwitch = row.status === 'sent' && Date.now() - sentAt >= REMINDER_MS
   }
@@ -471,9 +507,20 @@ function presentInquiry(row, role) {
 }
 
 function publicCraftsman(id) {
-  const row = database.prepare('SELECT id, profession, shop, city, bio FROM craftsmen WHERE id = ?').get(id)
+  const row = database.prepare('SELECT id, profession, shop, city, bio, verified_at, joined_at FROM craftsmen WHERE id = ?').get(id)
   if (!row) return null
-  return { ...row, does: row.bio, skills: skillsOf(id) }
+  return {
+    id: row.id,
+    profession: row.profession,
+    shop: row.shop,
+    city: row.city,
+    bio: row.bio,
+    does: row.bio,
+    skills: skillsOf(id),
+    completedJobs: completedJobs(id),
+    verified: Boolean(row.verified_at),
+    joinedAt: row.joined_at || null,
+  }
 }
 
 function skillsOf(id) {

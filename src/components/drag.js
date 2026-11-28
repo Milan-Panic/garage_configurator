@@ -1,9 +1,13 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useRef } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 
+// Kad je raspored zaključan, predmeti se biraju, ali ne pomeraju; prevlačenje okreće pogled.
+export const DragLock = createContext(false)
+
 export function usePlaneDrag(onDrag, onGestureEnd) {
   const { camera, gl, controls } = useThree()
+  const locked = useContext(DragLock)
   const drag = useRef(null)
   const onDragRef = useRef(onDrag)
   const endRef = useRef(onGestureEnd)
@@ -55,6 +59,7 @@ export function usePlaneDrag(onDrag, onGestureEnd) {
   }, [camera, gl])
 
   function startDrag(event, plane, extra) {
+    if (locked) return
     event.stopPropagation()
     const hit = new THREE.Vector3()
     if (!event.ray?.intersectPlane(plane, hit)) return

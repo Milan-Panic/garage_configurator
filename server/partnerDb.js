@@ -87,6 +87,57 @@ export function openPartners(db, passwords) {
     CREATE INDEX IF NOT EXISTS partner_leads_customer ON partner_leads (customer_key);
     CREATE INDEX IF NOT EXISTS partner_charges_partner ON partner_charges (partner_id);
   `)
+  // Završen posao potvrđuje kupac; samo takvi poslovi se broje za bedževe.
+  ensureColumn('partner_leads', 'completed_at', 'TEXT')
+  ensureColumn('partners', 'pib', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn('partners', 'mb', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn('partners', 'verified_at', 'TEXT')
+  // Uslovi koje firma nudi, da kupac poredi ponude po istim kolonama.
+  ensureColumn('partners', 'warranty_structure', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn('partners', 'warranty_cover', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn('partners', 'warranty_work', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn('partners', 'install_days', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn('partners', 'deposit_terms', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn('partners', 'prices_with_vat', 'INTEGER NOT NULL DEFAULT 1')
+}
+
+function ensureColumn(table, name, type) {
+  const columns = database.prepare(`PRAGMA table_info(${table})`).all()
+  if (columns.some((column) => column.name === name)) return
+  database.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`)
+}
+
+function completedJobs(id) {
+  return database.prepare('SELECT COUNT(*) AS count FROM partner_leads WHERE partner_id = ? AND completed_at IS NOT NULL').get(id).count
+}
+
+function termsOf(row) {
+  return {
+    warrantyStructure: row.warranty_structure || 0,
+    warrantyCover: row.warranty_cover || 0,
+    warrantyWork: row.warranty_work || 0,
+    installDays: row.install_days || 0,
+    deposit: row.deposit_terms || '',
+    pricesWithVat: row.prices_with_vat !== 0,
+  }
+}
+
+// Šta svako sme da vidi o firmi: bez telefona i imejla, sa brojem završenih poslova.
+function publicView(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    city: row.city,
+    website: row.website,
+    delivery: row.delivery,
+    sponsored: Boolean(row.sponsored),
+    pricesValidUntil: row.prices_valid_until,
+    packages: packagesOf(row.id),
+    completedJobs: completedJobs(row.id),
+    verified: Boolean(row.verified_at),
+    joinedAt: row.created_at,
+    terms: termsOf(row),
+  }
 }
 
 function clean(value, max) {
@@ -150,6 +201,12 @@ function present(row) {
     pricesValidUntil: row.prices_valid_until,
     packages: packagesOf(row.id),
     prices: pricesOf(row.id),
+    pib: row.pib || '',
+    mb: row.mb || '',
+    verified: Boolean(row.verified_at),
+    completedJobs: completedJobs(row.id),
+    joinedAt: row.created_at,
+    terms: termsOf(row),
   }
 }
 
@@ -166,8 +223,12 @@ function readContact(input) {
     website: clean(input.website, 160),
     delivery: clean(input.delivery, 200),
     packages: uniquePackages(input.packages),
+    pib: clean(input.pib, 9).replace(/\D/g, ''),
+    mb: clean(input.mb, 8).replace(/\D/g, ''),
   }
   if (!contact.name || !contact.city || !contact.phone) return { error: 'Naziv firme, grad i telefon su obavezni.' }
+  if (contact.pib && contact.pib.length !== 9) return { error: 'PIB ima 9 cifara.' }
+  if (contact.mb && contact.mb.length !== 8) return { error: 'Matični broj ima 8 cifara.' }
   if (!EMAIL.test(contact.email)) return { error: 'Imejl mora biti pravi.' }
   if (contact.packages.length === 0) return { error: 'Izaberi bar jedan paket.' }
   return contact
@@ -200,6 +261,7 @@ function insertPartner(contact, password, status, terms = {}) {
     nonNegative(terms.commissionPct, 100),
     new Date().toISOString(),
   )
+  database.prepare('UPDATE partners SET pib = ?, mb = ? WHERE id = ?').run(contact.pib, contact.mb, id)
   setPackages(id, contact.packages)
   return { partner: present(partnerRow(id)) }
 }
@@ -250,8 +312,46 @@ export function adminUpdatePartner(id, input) {
     nonNegative(input.commissionPct, 100),
     id,
   )
+  // Oznaku „PIB proveren“ uključuje administrator posle provere u APR-u.
+  const verifiedAt = input.verified ? row.verified_at || new Date().toISOString() : null
+  database.prepare('UPDATE partners SET pib = ?, mb = ?, verified_at = ? WHERE id = ?').run(contact.pib, contact.mb, verifiedAt, id)
   setPackages(id, contact.packages)
   return { partner: present(partnerRow(id)) }
+}
+
+// Firma sama upisuje garanciju, rok montaže, uslove avansa i da li su cene sa PDV-om.
+export function savePartnerTerms(id, input) {
+  if (!partnerRow(id)) return { error: 'Firma nije pronađena.' }
+  const years = (value) => Math.round(nonNegative(value, 50))
+  database.prepare(`
+    UPDATE partners SET warranty_structure = ?, warranty_cover = ?, warranty_work = ?, install_days = ?, deposit_terms = ?, prices_with_vat = ?
+    WHERE id = ?
+  `).run(
+    years(input.warrantyStructure),
+    years(input.warrantyCover),
+    years(input.warrantyWork),
+    Math.round(nonNegative(input.installDays, 365)),
+    clean(input.deposit, 200),
+    input.pricesWithVat === false ? 0 : 1,
+    id,
+  )
+  return { partner: present(partnerRow(id)) }
+}
+
+export function publicPartner(id) {
+  const row = partnerRow(clean(id, 80))
+  if (!row || row.status !== 'active') return null
+  return publicView(row)
+}
+
+// Kupac potvrđuje da je posao završen. Tek tada se broji firmi.
+export function confirmLeadDone(customerKey, id) {
+  const row = database.prepare('SELECT * FROM partner_leads WHERE id = ? AND customer_key = ?').get(clean(id, 90), clean(customerKey, 80))
+  if (!row) return { error: 'Upit nije pronađen.' }
+  if (!['approved', 'sold'].includes(row.status)) return { error: 'Završen posao se potvrđuje tek kad je firma dobila upit.' }
+  if (row.completed_at) return { error: 'Posao je već potvrđen.' }
+  database.prepare('UPDATE partner_leads SET completed_at = ? WHERE id = ?').run(new Date().toISOString(), row.id)
+  return { lead: presentLead(leadRow(row.id), 'customer') }
 }
 
 export function deletePartner(id) {
@@ -319,17 +419,7 @@ export function publicOffers() {
   const rows = database.prepare(`SELECT * FROM partners WHERE status = 'active' ORDER BY name`).all()
   return rows
     .filter((row) => !row.prices_valid_until || row.prices_valid_until >= today())
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      city: row.city,
-      website: row.website,
-      delivery: row.delivery,
-      sponsored: Boolean(row.sponsored),
-      pricesValidUntil: row.prices_valid_until,
-      packages: packagesOf(row.id),
-      prices: pricesOf(row.id),
-    }))
+    .map((row) => ({ ...publicView(row), prices: pricesOf(row.id) }))
     .filter((partner) => Object.keys(partner.prices).length > 0)
 }
 
@@ -424,9 +514,11 @@ function presentLead(row, role) {
     saleAmount: row.sale_amount,
     partner: { id: partner?.id, name: partner?.name, city: partner?.city },
   }
+  view.completedAt = row.completed_at || null
   if (role === 'customer') {
     // Kupac vidi kontakt firme tek kad je upit odobren.
     if (CONTACT_STATUSES.includes(row.status)) view.partner.phone = partner?.phone
+    view.canConfirm = CONTACT_STATUSES.includes(row.status) && !row.completed_at
     return view
   }
   view.note = row.note

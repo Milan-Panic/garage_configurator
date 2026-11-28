@@ -65,6 +65,8 @@ export function PartnerPage() {
         delivery: form.get('delivery'),
         password: form.get('password'),
         packages: form.getAll('packages'),
+        pib: form.get('pib'),
+        mb: form.get('mb'),
       }),
     })
     const payload = await response.json()
@@ -84,6 +86,17 @@ export function PartnerPage() {
     })
     const payload = await response.json()
     if (!response.ok) throw new Error(payload.error || 'Cenovnik nije sačuvan.')
+    await load()
+  }
+
+  async function saveTerms(terms) {
+    const response = await fetch('/api/partner/terms', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(terms),
+    })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.error || 'Uslovi nisu sačuvani.')
     await load()
   }
 
@@ -134,6 +147,9 @@ export function PartnerPage() {
                 <Input name="email" label="Imejl" type="email" />
                 <Input name="website" label="Sajt" required={false} />
                 <Input name="delivery" label="Dostava (npr. cela Vojvodina, preko 50.000 RSD besplatno)" required={false} />
+                <Input name="pib" label="PIB (9 cifara)" required={false} />
+                <Input name="mb" label="Matični broj (8 cifara)" required={false} />
+                <p className="text-xs text-stone-500">Sa PIB-om Mera proverava firmu u APR-u, a kupci vide oznaku „PIB proveren“.</p>
                 <Input name="password" label="Lozinka" type="password" />
                 <fieldset className="text-sm">
                   <legend className="mb-1 font-medium text-stone-800">Paketi koje možeš da isporučiš komplet</legend>
@@ -170,6 +186,15 @@ export function PartnerPage() {
             </section>
 
             <section className="space-y-3">
+              <h2 className="text-xl font-semibold text-stone-950">Uslovi i bedž</h2>
+              <p className="text-sm text-stone-700">
+                Kupac poredi ponude po istim kolonama: garancija, rok montaže i avans. Završeni poslovi: {partner.completedJobs || 0}
+                {partner.verified ? ' · PIB proveren' : ''}. Posao se broji kad kupac potvrdi da je završen.
+              </p>
+              <TermsForm key={JSON.stringify(partner.terms)} terms={partner.terms} onSave={saveTerms} />
+            </section>
+
+            <section className="space-y-3">
               <h2 className="text-xl font-semibold text-stone-950">Cenovnik</h2>
               <div className="rounded-xl border border-stone-300 bg-white p-4">
                 <PriceEditor packages={partner.packages} prices={partner.prices} validUntil={partner.pricesValidUntil} onSave={savePrices} />
@@ -190,6 +215,57 @@ export function PartnerPage() {
         )}
       </div>
     </div>
+  )
+}
+
+function TermsForm({ terms = {}, onSave }) {
+  const [values, setValues] = useState({
+    warrantyStructure: terms.warrantyStructure || '',
+    warrantyCover: terms.warrantyCover || '',
+    warrantyWork: terms.warrantyWork || '',
+    installDays: terms.installDays || '',
+    deposit: terms.deposit || '',
+    pricesWithVat: terms.pricesWithVat !== false,
+  })
+  const [note, setNote] = useState('')
+  const set = (key) => (event) => setValues((current) => ({ ...current, [key]: event.target.value }))
+  return (
+    <form
+      className="grid gap-3 rounded-xl border border-stone-300 bg-white p-4 text-sm sm:grid-cols-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        setNote('')
+        onSave({ ...values, warrantyStructure: Number(values.warrantyStructure) || 0, warrantyCover: Number(values.warrantyCover) || 0, warrantyWork: Number(values.warrantyWork) || 0, installDays: Number(values.installDays) || 0 })
+          .then(() => setNote('Sačuvano.'))
+          .catch((reason) => setNote(reason.message))
+      }}
+    >
+      <NumberField label="Garancija na konstrukciju, godina" value={values.warrantyStructure} onChange={set('warrantyStructure')} />
+      <NumberField label="Garancija na pokrivač i panele, godina" value={values.warrantyCover} onChange={set('warrantyCover')} />
+      <NumberField label="Garancija na montažu, godina" value={values.warrantyWork} onChange={set('warrantyWork')} />
+      <NumberField label="Rok montaže, dana od uplate" value={values.installDays} onChange={set('installDays')} />
+      <label className="block sm:col-span-2">
+        <span className="mb-1 block font-medium text-stone-800">Avans</span>
+        <input value={values.deposit} onChange={set('deposit')} maxLength={200} placeholder="npr. 30% avans uz avansni račun, ostatak po montaži" className="w-full rounded-lg border border-stone-300 px-3 py-2" />
+      </label>
+      <label className="flex items-center gap-2 sm:col-span-2">
+        <input type="checkbox" checked={values.pricesWithVat} onChange={(event) => setValues((current) => ({ ...current, pricesWithVat: event.target.checked }))} />
+        Cene u mom cenovniku su sa PDV-om. Ako nisu, Mera kupcu dodaje 20% da ponude budu uporedive.
+      </label>
+      <div className="flex items-center gap-3 sm:col-span-2">
+        <button type="submit" className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white">Sačuvaj uslove</button>
+        {note && <span className="text-stone-600">{note}</span>}
+      </div>
+    </form>
+  )
+}
+
+function NumberField({ label, value, onChange }) {
+  return (
+    <label className="block">
+      <span className="mb-1 block font-medium text-stone-800">{label}</span>
+      <input type="number" min="0" value={value} onChange={onChange} className="w-full rounded-lg border border-stone-300 px-3 py-2" />
+    </label>
   )
 }
 

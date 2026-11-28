@@ -56,6 +56,9 @@ import {
 import { navigate } from '../nav'
 import { packageOffers } from '../partners'
 import { formatDin, quoteItems } from '../prices'
+import { VAT_LABEL, formatRange } from '../pricing'
+import { CostBox } from './CostBox'
+import { OfferGuide, OfferTerms } from './OfferCompare'
 import { formatSavedAt } from '../projects'
 import { openAccountPrompt, useAccount } from '../account'
 import { PITCH_LIMITS, ROOF_FALLS, ROOF_KINDS, ROOF_RIDGES, roofGeometry } from '../roof'
@@ -254,8 +257,8 @@ export function ControlPanel(props) {
 
       <footer className="flex items-center gap-3 border-t border-stone-200 bg-white px-4 py-3">
         <button type="button" onClick={() => setTab('estimate')} className="min-w-0 flex-1 text-left">
-          <span className="block text-xs text-stone-500">Orijentaciono</span>
-          <span className="font-display block truncate text-2xl leading-tight font-bold text-stone-950 tabular-nums">{formatDin(total)}</span>
+          <span className="block text-xs text-stone-500">Okvirno, {VAT_LABEL}</span>
+          <span className="font-display block truncate text-xl leading-tight font-bold text-stone-950 tabular-nums">{formatRange(total)}</span>
         </button>
         <button
           type="button"
@@ -409,6 +412,13 @@ function ShapeTab({ scene, estimate, catalog, partners = [], billing, onDimensio
             <option value="custom">Druga lokacija</option>
           </select>
         </label>
+        <Segmented label="Vetar" value={site.wind} options={WIND_OPTIONS} onChange={(wind) => onSceneChange({ site: { ...site, wind } })} columns={2} />
+        <Hint>
+          {site.wind === 'exposed'
+            ? 'Na izloženom mestu objekat dobija jača ukrućenja, pa je malo skuplji.'
+            : 'Izaberi Izloženo ako je objekat na brdu, na otvorenom polju ili na košavi.'}
+        </Hint>
+        <Expert title="Sneg, vetar i provera nosača">
         <Slider
           label="Nadmorska visina"
           value={site.altitude}
@@ -421,12 +431,6 @@ function ShapeTab({ scene, estimate, catalog, partners = [], billing, onDimensio
           {snowLoad(site) > 1
             ? `Sneg ovde je teži od ravničarskog (${snowSource(site)}). Teži sneg traži jače nosače, venac i rožnjače, pa je konstrukcija skuplja.`
             : 'Do 500 m sneg se računa kao 1,0 kN/m², pa visina ovde ne menja ni nosač ni cenu. Istok Srbije (Zaječar, Bor, Negotin) ima teži sneg po propisu.'}
-        </Hint>
-        <Segmented label="Vetar" value={site.wind} options={WIND_OPTIONS} onChange={(wind) => onSceneChange({ site: { ...site, wind } })} columns={2} />
-        <Hint>
-          {site.wind === 'exposed'
-            ? 'Izložena lokacija dobija po jedno polje sa dijagonalom više u zidovima i krovu, a stubovi, rigle i rožnjače se proveravaju na jači vetar. Zato je konstrukcija skuplja.'
-            : 'Dijagonale idu u krajnja polja zidova i krova. Izaberi Izloženo ako je objekat na brdu, grebenu ili na košavi.'}
         </Hint>
         <div className="grid grid-cols-2 gap-2">
           <Stat label="Sneg na krovu" value={`${String(snowLoad(site)).replace('.', ',')} kN/m²`} />
@@ -453,6 +457,7 @@ function ShapeTab({ scene, estimate, catalog, partners = [], billing, onDimensio
             ? ' Ovoliki sneg je izvan opsega računice: konstrukciju određuje statičar.'
             : !estimate.sizing.ok && ' Neki deo konstrukcije ni u najjačem profilu ne nosi ovaj sneg, pa se cena više ne menja. Vidi upozorenja u predmeru.'}
         </Hint>
+        </Expert>
       </Section>
 
       <Section icon={Layers} title="Krov">
@@ -490,6 +495,7 @@ function ShapeTab({ scene, estimate, catalog, partners = [], billing, onDimensio
         {roof.kind === 'duo' && (
           <Segmented label="Slemen" value={roof.ridge} options={ROOF_RIDGES} onChange={(ridge) => onRoofChange({ ridge })} />
         )}
+        <Expert title="Nosač krova">
         {!estimate.sizing.framed && (
           <Toggle
             label="Rešetkasti nosač"
@@ -504,6 +510,8 @@ function ShapeTab({ scene, estimate, catalog, partners = [], billing, onDimensio
             Raspon je prevelik za kutijasti nosač. Uključi rešetku.
           </p>
         )}
+        {estimate.sizing.framed && <Hint>Nosač krova bira sistem konstrukcije, ispod.</Hint>}
+        </Expert>
         <Segmented label="Krovni prozori" value={skylights.kind} options={SKYLIGHT_KINDS} onChange={(kind) => onSceneChange({ skylights: { ...skylights, kind } })} />
         <Slider
           label="Broj krovnih prozora"
@@ -552,7 +560,23 @@ function SystemSection({ scene, catalog = [], partners = [], onSceneChange }) {
   const setStructure = (part) => onSceneChange({ structure: { ...structure, ...part } })
 
   return (
-    <Section icon={Ruler} title="Sistem konstrukcije">
+    <>
+    <Section icon={Ruler} title="Šta da uračunamo">
+      <Toggle
+        label="Izrada i montaža konstrukcije"
+        detail="Doda rad i montažu čelične konstrukcije. Isključi ako konstrukciju praviš sam."
+        checked={Boolean(structure.fabrication)}
+        onChange={(fabrication) => setStructure({ fabrication })}
+      />
+      <Toggle
+        label="Projekat konstrukcije"
+        detail="Inženjer proverava i potpisuje konstrukciju. Treba za rešenje u opštini i za dozvolu."
+        checked={Boolean(structure.engineering)}
+        onChange={(engineering) => setStructure({ engineering })}
+      />
+      <Hint>Zaštita: {protection.name.toLowerCase()}. {current.protections.length > 1 ? 'Druga zaštita se bira u delu za stručnjake.' : protection.detail}</Hint>
+    </Section>
+    <Expert title={`Sistem konstrukcije: ${current.name}`}>
       <div className="grid gap-2">
         {options.map(({ system, kg, cost, ok, mismatch, firms }) => {
           const active = system.id === current.id
@@ -570,7 +594,7 @@ function SystemSection({ scene, catalog = [], partners = [], onSceneChange }) {
               </span>
               <span className={`mt-1 block text-xs ${active ? 'text-stone-300' : 'text-stone-500'}`}>{system.pitch}</span>
               <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                {cost > 0 && <span className="font-semibold tabular-nums">{formatDin(cost)}</span>}
+                {cost > 0 && <span className="font-semibold tabular-nums">{formatRange(cost)}</span>}
                 <span className="tabular-nums">≈ {Math.round(kg).toLocaleString('sr-RS')} kg čelika</span>
                 <span>{Math.round(kg / (scene.dimensions.width * scene.dimensions.length))} kg/m²</span>
                 <span className={ok ? (active ? 'text-emerald-300' : 'text-emerald-700') : active ? 'text-amber-300' : 'text-amber-700'}>{ok ? 'prolazi proveru' : 'ne prolazi proveru'}</span>
@@ -604,20 +628,9 @@ function SystemSection({ scene, catalog = [], partners = [], onSceneChange }) {
           columns={current.protections.length}
         />
       )}
-      <Hint>{current.protections.length > 1 ? protection.detail : `Zaštita: ${protection.name.toLowerCase()}. ${protection.detail}`}</Hint>
-      <Toggle
-        label="Izrada i montaža konstrukcije"
-        detail="Doda rad bravara i montažu po kg čelika, po ceni za izabrani sistem. Isključi ako konstrukciju praviš sam."
-        checked={Boolean(structure.fabrication)}
-        onChange={(fabrication) => setStructure({ fabrication })}
-      />
-      <Toggle
-        label="Projekat konstrukcije"
-        detail="Statičar proverava i potpisuje konstrukciju i daje crteže za izradu. Treba za rešenje iz člana 145 i za dozvolu."
-        checked={Boolean(structure.engineering)}
-        onChange={(engineering) => setStructure({ engineering })}
-      />
-    </Section>
+      {current.protections.length > 1 && <Hint>{protection.detail}</Hint>}
+    </Expert>
+    </>
   )
 }
 
@@ -1426,7 +1439,7 @@ function OffersSection({ scene, estimate, partners, onSceneChange }) {
 
   return (
     <Section icon={Store} title="Ponude firmi">
-      <Hint>Jedna firma za ceo paket. Izabrana ponuda menja cene iz računice, a upit šalješ na strani Majstori.</Hint>
+      <Hint>Jedna firma za ceo paket. Sve ponude su u istim kolonama i sa PDV-om. Izabrana ponuda menja cene iz računice, a upit šalješ na strani Majstori.</Hint>
       {packs.map(({ pack, offers }) => (
         <div key={pack.id} className="space-y-1.5">
           <p className="text-sm font-medium text-stone-900">{pack.name}</p>
@@ -1450,6 +1463,7 @@ function OffersSection({ scene, estimate, partners, onSceneChange }) {
                   {offer.partner.sponsored ? ' · Sponzorisano' : ''}
                 </span>
                 {offer.partner.delivery && <span className="block text-xs text-stone-500">{offer.partner.delivery}</span>}
+                <OfferTerms offer={offer} />
                 {!offer.complete && (
                   <span className="mt-0.5 block text-xs text-amber-800">
                     Nepotpuno: {offer.covered} od {offer.articles} artikala. Nema: {offer.missing.join(', ')}.
@@ -1487,7 +1501,7 @@ function EstimateTab({ scene, estimate, quote, total, partners, billing, onScene
         ...section.items.map((entry) => `- ${entry.item}: ${formatQuantity(entry.quantity)} ${entry.unit}${entry.detail ? ` (${entry.detail})` : ''}`),
         '',
       ]),
-      `Orijentaciono: ${formatDin(total)}`,
+      `Okvirno, ${VAT_LABEL}: ${formatRange(total)}`,
     ].join('\n')
     navigator.clipboard?.writeText(text).then(() => {
       setCopied(true)
@@ -1498,17 +1512,17 @@ function EstimateTab({ scene, estimate, quote, total, partners, billing, onScene
   return (
     <div className="space-y-6">
       <div className="rounded-xl bg-stone-900 p-4 text-white">
-        <p className="text-xs text-stone-400">Orijentaciona cena</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums">{formatDin(total)}</p>
+        <p className="text-xs text-stone-400">Okvirna cena, {VAT_LABEL}</p>
+        <p className="mt-1 text-2xl font-semibold tabular-nums">{formatRange(total)}</p>
         <p className="mt-1 text-xs text-stone-400">
-          oko {formatDin(total / Math.max(1, area))} po m² · zbir po stavkama, nije ponuda
+          okvirno {formatRange(total / Math.max(1, area))} po m² · nije ponuda firme
         </p>
         <div className="mt-4 space-y-2">
           {skills.map(([skill, group]) => (
             <div key={skill}>
               <p className="flex justify-between text-xs">
                 <span className="text-stone-300">{skillName(skill)}</span>
-                <span className="tabular-nums">{formatDin(group.total)}</span>
+                <span className="tabular-nums">{formatRange(group.total)}</span>
               </p>
               <div className="mt-1 h-1.5 rounded-full bg-white/10">
                 <div className="h-1.5 rounded-full bg-accent-400" style={{ width: `${(group.total / peak) * 100}%` }} />
@@ -1516,6 +1530,10 @@ function EstimateTab({ scene, estimate, quote, total, partners, billing, onScene
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="rounded-xl bg-white p-3 ring-1 ring-stone-200">
+        <CostBox scene={scene} quote={quote} compact />
       </div>
 
       {estimate.warnings.map((warning) => (
@@ -1546,6 +1564,7 @@ function EstimateTab({ scene, estimate, quote, total, partners, billing, onScene
       </button>
 
       <OffersSection scene={scene} estimate={estimate} partners={partners} onSceneChange={onSceneChange} />
+      <OfferGuide />
 
       <Section icon={ScrollText} title="Spisak materijala">
         {!full && (
@@ -1723,6 +1742,19 @@ function ProjectsTab({ projects, activeProjectId, projectDirty, billing, onSaveP
 }
 
 /* ---------- Primitive ---------- */
+
+// Tehnički deo koji prosečan kupac ne mora da gleda. Ništa nije skriveno, samo sklopljeno.
+function Expert({ title, children }) {
+  return (
+    <details className="group rounded-lg border border-dashed border-stone-300 bg-stone-50/60">
+      <summary className="flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-xs font-semibold text-stone-600">
+        <span>Za stručnjake · {title}</span>
+        <span aria-hidden="true" className="text-base leading-none transition-transform group-open:rotate-45">+</span>
+      </summary>
+      <div className="space-y-3 px-3 pb-3">{children}</div>
+    </details>
+  )
+}
 
 function Section({ icon: Icon, title, children }) {
   return (
